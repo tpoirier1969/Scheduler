@@ -483,3 +483,106 @@ body.focus-day .day-column.focused { display:block; min-width:calc(100vw - 1rem)
 @media (max-width: 900px) {
   .calendar-grid.phone-carousel .day-column:nth-child(n) { display:block !important; }
 }
+
+/* V1.10 phone toolbar fix: keep the date pill inside the nav bar, not floating over the calendar */
+@media (max-width: 760px) {
+  .toolbar {
+    top: 38px !important;
+    height: 32px !important;
+    min-height: 32px !important;
+    max-height: 32px !important;
+    padding: 3px 6px !important;
+    display: flex !important;
+    align-items: center !important;
+    gap: 4px !important;
+    overflow: visible !important;
+    position: sticky !important;
+  }
+
+  #navMenuBtn.mobile-menu-button {
+    order: 1 !important;
+    flex: 0 0 28px !important;
+    width: 28px !important;
+    min-width: 28px !important;
+    height: 26px !important;
+    min-height: 26px !important;
+    max-height: 26px !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    line-height: 1 !important;
+  }
+
+  #weekRangeBtn.week-range-button {
+    order: 2 !important;
+    position: static !important;
+    inset: auto !important;
+    transform: none !important;
+    flex: 1 1 auto !important;
+    min-width: 0 !important;
+    width: auto !important;
+    height: 26px !important;
+    min-height: 26px !important;
+    max-height: 26px !important;
+    padding: 0 8px !important;
+    margin: 0 !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    line-height: 1 !important;
+    font-size: 13px !important;
+    font-weight: 800 !important;
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+  }
+
+  .week-nav {
+    order: 3 !important;
+    display: flex !important;
+    flex: 0 0 auto !important;
+    gap: 4px !important;
+    align-items: center !important;
+  }
+
+  #todayBtn { display: none !important; }
+
+  #prevWeekBtn,
+  #nextWeekBtn {
+    position: static !important;
+    order: initial !important;
+    flex: 0 0 28px !important;
+    width: 28px !important;
+    min-width: 28px !important;
+    height: 26px !important;
+    min-height: 26px !important;
+    max-height: 26px !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    line-height: 1 !important;
+    font-size: 15px !important;
+  }
+
+  .toolbar-stack {
+    order: 4 !important;
+    top: calc(100% + 4px) !important;
+  }
+
+  .calendar-grid {
+    padding-top: 4px !important;
+  }
+
+  .time-label {
+    font-size: 7.5px !important;
+    max-width: 35px !important;
+  }
+
+  .event-block {
+    left: 35px !important;
+  }
+}
