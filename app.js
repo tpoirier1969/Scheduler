@@ -105,7 +105,15 @@ function setupControls(){
 }
 function toggleToolbarMenu(){ const tb=document.querySelector('.toolbar'); const open=!tb.classList.contains('menu-open'); tb.classList.toggle('menu-open', open); $('navMenuBtn').setAttribute('aria-expanded', String(open)); }
 function closeToolbarMenu(){ const tb=document.querySelector('.toolbar'); if(tb){ tb.classList.remove('menu-open'); } if($('navMenuBtn')) $('navMenuBtn').setAttribute('aria-expanded','false'); }
-function weekRangeText(){ const days=visibleDayCount(); const start=state.weekStart; const end=addDays(start, days-1); return `${fmtDate(start)} – ${fmtDate(end)}`; }
+function visibleRangeStart(){ return isScrollableDayRail() ? new Date((firstVisibleRailDate() || isoDate(state.weekStart))+'T00:00') : state.weekStart; }
+function weekRangeText(startOverride=null){ const days=visibleDayCount(); const start=startOverride || visibleRangeStart(); const end=addDays(start, days-1); return `${fmtDate(start)} – ${fmtDate(end)}`; }
+function updateVisibleRangeUI(){
+  const start=visibleRangeStart();
+  const days=visibleDayCount();
+  $('weekRangeBtn').textContent=weekRangeText(start);
+  const events=expandEventsForRange(start, days);
+  renderPrint(events, start, days);
+}
 function visibleDayCount(){
   if(document.body.classList.contains('focus-day')) return 1;
   if(window.matchMedia('(max-width: 760px) and (orientation: portrait)').matches) return 3;
@@ -127,6 +135,7 @@ function setupSwipeNavigation(){
   }, { passive:true });
   grid.addEventListener('scroll', () => {
     if(state.adjustingScroll || !isScrollableDayRail()) return;
+    updateVisibleRangeUI();
     clearTimeout(edgeTimer);
     edgeTimer=setTimeout(checkRailEdges, 90);
   }, { passive:true });
@@ -200,7 +209,7 @@ function render(){
   $('weekRangeBtn').textContent=weekRangeText();
   const range=renderRange();
   const events=expandEventsForRange(range.start, range.days);
-  renderDensity(events); renderGrid(events); renderPrint(events);
+  renderDensity(events); renderGrid(events); renderPrint(events, visibleRangeStart(), visibleDayCount());
 }
 function renderDensity(events){
   const panel=$('densityPanel'); panel.innerHTML='';
@@ -228,7 +237,7 @@ function renderGrid(events){
     col.querySelector('.day-header').ondblclick=(ev)=>{ if(ev.target.closest('button')) return; state.focusDate = state.focusDate===ds ? null : ds; document.body.classList.toggle('focus-day', !!state.focusDate); render(); };
     col.querySelector('.add-day').onclick=()=>openDialog({date:ds,start_time:'09:00',end_time:'09:30',person_key:'donna'});
     const tl=col.querySelector('.day-timeline');
-    for(let h=START_HOUR; h<=END_HOUR; h++){ const lab=document.createElement('div'); lab.className='time-label'+(h===START_HOUR?' start-label':''); lab.style.top = h===START_HOUR ? '2px' : `calc(${h-START_HOUR} * var(--hour-height) - 1px)`; lab.textContent=fmtTime(String(h).padStart(2,'0')+':00'); tl.appendChild(lab); }
+    for(let h=START_HOUR; h<=END_HOUR; h++){ const lab=document.createElement('div'); lab.className='time-label'; lab.style.top = `calc(var(--time-label-gutter) + ${h-START_HOUR} * var(--hour-height))`; lab.textContent=fmtTime(String(h).padStart(2,'0')+':00'); tl.appendChild(lab); }
     const dayEvents=events.filter(e=>e.date===ds).sort((a,b)=>hmToMin(a.start_time)-hmToMin(b.start_time)); assignOverlapLanes(dayEvents).forEach(e=>tl.appendChild(eventEl(e)));
     grid.appendChild(col);
   }
@@ -239,17 +248,20 @@ function assignOverlapLanes(list){
 }
 function eventEl(e){
   const div=document.createElement('article'); div.className='event-block '+(e.status==='no_show'?'no-show ':'')+(e.status==='cancelled'?'cancelled ':'')+(e.overlap?'overlap-2 lane-'+e.lane:'');
-  const top=(hmToMin(e.start_time)-START_HOUR*60)/((END_HOUR-START_HOUR)*60)*100; const height=(hmToMin(e.end_time)-hmToMin(e.start_time))/((END_HOUR-START_HOUR)*60)*100;
-  div.style.top=top+'%'; div.style.height=height+'%'; div.style.background=e.color||'#ddd';
+  const startOffset=(hmToMin(e.start_time)-START_HOUR*60)/60;
+  const duration=(hmToMin(e.end_time)-hmToMin(e.start_time))/60;
+  div.style.top=`calc(var(--time-label-gutter) + ${startOffset} * var(--hour-height))`;
+  div.style.height=`calc(${duration} * var(--hour-height))`;
+  div.style.background=e.color||'#ddd';
   const meta = e.notes ? e.notes : `${PEOPLE[e.person_key]?.label||e.person_key} · ${e.preset_name}`;
   div.innerHTML=`<div><div class="event-title">${escapeHtml(e.title)}</div><div class="event-meta">${escapeHtml(meta)}</div></div>`;
   div.addEventListener('pointerdown', ev=>ev.stopPropagation()); div.addEventListener('dblclick', ev=>ev.stopPropagation()); div.onclick=(ev)=>{ ev.stopPropagation(); ev.preventDefault(); openDetails(e); };
   return div;
 }
-function renderPrint(events){
+function renderPrint(events, startArg=null, daysArg=null){
   const box=$('printList'); box.innerHTML='';
-  const days = visibleDayCount();
-  const start = state.weekStart;
+  const days = daysArg || visibleDayCount();
+  const start = startArg || visibleRangeStart();
   const end = addDays(start, days-1);
   const heading = document.querySelector('.print-card h2');
   if(heading) heading.textContent = days===7 ? 'Weekly overview' : `${days}-day overview`;

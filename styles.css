@@ -586,3 +586,54 @@ body.focus-day .day-column.focused { display:block; min-width:calc(100vw - 1rem)
     left: 35px !important;
   }
 }
+
+/* V1.12: time-grid geometry and mobile visible-range fixes */
+:root {
+  --time-label-gutter: 13px;
+}
+.day-timeline {
+  height: calc(var(--time-label-gutter) + (var(--hour-height) * 15)) !important;
+  background-position: 0 var(--time-label-gutter) !important;
+}
+.half-lines {
+  top: var(--time-label-gutter) !important;
+  bottom: 0 !important;
+  inset-inline: 0 !important;
+}
+.time-label,
+.time-label.start-label {
+  top: auto;
+  transform: translateY(-100%) !important;
+  margin-top: 0 !important;
+  line-height: 1 !important;
+  white-space: nowrap !important;
+  overflow: visible !important;
+}
+@media (max-width: 760px) {
+  :root { --time-label-gutter: 12px; }
+  .time-label,
+  .time-label.start-label {
+    font-size: 7.5px !important;
+    left: 3px !important;
+    max-width: none !important;
+    background: rgba(255,253,250,.9) !important;
+  }
+  .event-block {
+    left: 44px !important;
+    right: 3px !important;
+    padding: 1px 3px !important;
+    min-height: 0 !important;
+  }
+  .event-title {
+    font-size: 9px !important;
+    line-height: 1 !important;
+  }
+}
+@media (min-width: 761px) {
+  .event-block { left: 46px !important; }
+  .time-label,
+  .time-label.start-label {
+    max-width: none !important;
+    overflow: visible !important;
+  }
+}
