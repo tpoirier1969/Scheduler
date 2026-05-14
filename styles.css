@@ -359,30 +359,29 @@ body.focus-day .day-column.focused { display:block; min-width:calc(100vw - 1rem)
 }
 
 
-/* V1.6 mobile carousel: days track the finger during horizontal swipes */
+/* V1.7 mobile day rail: native horizontal scroll so days move as the finger moves */
 @media (max-width: 760px) and (orientation: portrait) {
   .calendar-grid.phone-carousel {
     --phone-day-width: calc((100vw - 0.76rem - 8px) / 3);
-    grid-template-columns: repeat(9, var(--phone-day-width)) !important;
+    display: grid !important;
+    grid-template-columns: repeat(7, var(--phone-day-width)) !important;
     grid-auto-flow: column !important;
-    overflow: hidden !important;
+    overflow-x: auto !important;
+    overflow-y: visible !important;
     overscroll-behavior-x: contain !important;
+    -webkit-overflow-scrolling: touch !important;
+    scroll-snap-type: x proximity !important;
     gap: 4px !important;
+    transform: none !important;
     transition: none !important;
-    will-change: transform;
+    padding-bottom: 4px !important;
   }
-  .calendar-grid.phone-carousel.is-dragging {
-    transition: none !important;
-  }
-  .calendar-grid.phone-carousel.is-snapping {
-    transition: transform 220ms cubic-bezier(.2,.72,.18,1) !important;
-  }
+  .calendar-grid.phone-carousel::-webkit-scrollbar { display:none; }
+  .calendar-grid.phone-carousel { scrollbar-width:none; }
   .calendar-grid.phone-carousel .day-column {
     min-width: var(--phone-day-width) !important;
     width: var(--phone-day-width) !important;
     display: block !important;
-  }
-  .calendar-grid.phone-carousel .day-column:nth-child(n) {
-    display: block !important;
+    scroll-snap-align: start !important;
   }
 }

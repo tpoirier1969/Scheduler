@@ -110,95 +110,21 @@ function visibleDayCount(){ return window.matchMedia('(max-width: 760px) and (or
 
 
 function setupSwipeNavigation(){
+  // V1.7: use native horizontal scrolling/snap on phones so days move with the finger.
+  // The old transform-based carousel could render columns off-screen on iOS.
   const grid = $('calendarGrid');
   if(!grid) return;
-  let startX = 0;
-  let startY = 0;
-  let dx = 0;
-  let tracking = false;
-  let dragging = false;
-  let startedOnInteractive = false;
-  const isPhoneCarousel = () => window.matchMedia('(max-width: 760px) and (orientation: portrait)').matches && !document.body.classList.contains('focus-day');
-  const isInteractiveTarget = target => !!target.closest('button, input, select, textarea, dialog, .event-block, .day-header, .add-day');
-  const columnStep = () => {
-    const first = grid.querySelector('.day-column');
-    if(!first) return Math.max(120, grid.clientWidth / 3);
-    const styles = getComputedStyle(grid);
-    const gap = Number.parseFloat(styles.columnGap || styles.gap || '0') || 0;
-    return first.getBoundingClientRect().width + gap;
-  };
-  const baseOffset = () => isPhoneCarousel() ? -(columnStep() * 3) : 0;
-  const setX = x => { grid.style.transform = `translate3d(${x}px,0,0)`; };
-  const reset = () => {
-    tracking = false;
-    dragging = false;
-    dx = 0;
-    grid.classList.remove('is-dragging','is-snapping');
-    resetCarouselPosition();
-  };
-
-  grid.addEventListener('touchstart', ev => {
-    if(!isPhoneCarousel() || ev.touches.length !== 1) return;
-    tracking = true;
-    dragging = false;
-    dx = 0;
-    startedOnInteractive = isInteractiveTarget(ev.target);
-    startX = ev.touches[0].clientX;
-    startY = ev.touches[0].clientY;
-    grid.classList.remove('is-snapping');
-  }, { passive:true });
-
-  grid.addEventListener('touchmove', ev => {
-    if(!tracking || startedOnInteractive || !isPhoneCarousel() || ev.touches.length !== 1) return;
-    const touch = ev.touches[0];
-    dx = touch.clientX - startX;
-    const dy = touch.clientY - startY;
-    if(!dragging){
-      if(Math.abs(dx) < 8 && Math.abs(dy) < 8) return;
-      if(Math.abs(dx) < Math.abs(dy) * 1.15){ tracking = false; return; }
-      dragging = true;
-      grid.classList.add('is-dragging');
+  grid.addEventListener('wheel', ev => {
+    if(window.matchMedia('(max-width: 760px) and (orientation: portrait)').matches && Math.abs(ev.deltaY) > Math.abs(ev.deltaX)){
+      grid.scrollLeft += ev.deltaY;
     }
-    ev.preventDefault();
-    const resistance = Math.max(-columnStep() * 1.15, Math.min(columnStep() * 1.15, dx));
-    setX(baseOffset() + resistance);
-  }, { passive:false });
-
-  grid.addEventListener('touchend', () => {
-    if(!tracking || startedOnInteractive || !isPhoneCarousel()) { reset(); return; }
-    const step = columnStep();
-    const shouldPage = dragging && Math.abs(dx) >= Math.max(45, step * 0.28);
-    grid.classList.remove('is-dragging');
-    grid.classList.add('is-snapping');
-    if(!shouldPage){
-      setX(baseOffset());
-      setTimeout(reset, 230);
-      return;
-    }
-    const direction = dx < 0 ? 1 : -1;
-    setX(baseOffset() - direction * step);
-    setTimeout(() => {
-      state.weekStart = addDays(state.weekStart, direction);
-      closeToolbarMenu();
-      grid.classList.remove('is-snapping');
-      render();
-    }, 230);
   }, { passive:true });
-
-  grid.addEventListener('touchcancel', reset, { passive:true });
 }
 
 function resetCarouselPosition(){
   const grid=$('calendarGrid');
   if(!grid) return;
-  const phoneCarousel = window.matchMedia('(max-width: 760px) and (orientation: portrait)').matches && !document.body.classList.contains('focus-day');
-  if(!phoneCarousel){ grid.style.transform=''; return; }
-  const first=grid.querySelector('.day-column');
-  if(!first) return;
-  const styles=getComputedStyle(grid);
-  const gap=Number.parseFloat(styles.columnGap || styles.gap || '0') || 0;
-  const step=first.getBoundingClientRect().width + gap;
-  grid.style.transform=`translate3d(${-step*3}px,0,0)`;
+  grid.style.transform='';
 }
 
 function fillPersonSelect(){ $('personSelect').innerHTML=Object.entries(PEOPLE).map(([k,p])=>`<option value="${k}">${p.label}</option>`).join(''); fillPresetSelect(); fillPalette(); }
@@ -246,8 +172,8 @@ function renderGrid(events){
   const grid=$('calendarGrid'); grid.innerHTML=''; const today=isoDate(new Date());
   grid.classList.remove('is-dragging','is-snapping');
   const phoneCarousel = window.matchMedia('(max-width: 760px) and (orientation: portrait)').matches && !document.body.classList.contains('focus-day');
-  const startOffset = phoneCarousel ? -3 : 0;
-  const dayCount = phoneCarousel ? 9 : 7;
+  const startOffset = 0;
+  const dayCount = 7;
   grid.classList.toggle('phone-carousel', phoneCarousel);
   for(let i=startOffset;i<startOffset+dayCount;i++){ const d=addDays(state.weekStart,i); const ds=isoDate(d); const col=document.createElement('section'); col.className='day-column'+(ds===today?' current-day':'');
     if(state.focusDate===ds) col.classList.add('focused');
