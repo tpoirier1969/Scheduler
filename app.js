@@ -24,6 +24,7 @@ async function init(){
   document.body.classList.add('zoom-compact');
   setupSupabase();
   setupControls();
+  setupSwipeNavigation();
   fillPersonSelect();
   await loadEvents();
   render();
@@ -106,6 +107,38 @@ function toggleToolbarMenu(){ const tb=document.querySelector('.toolbar'); const
 function closeToolbarMenu(){ const tb=document.querySelector('.toolbar'); if(tb){ tb.classList.remove('menu-open'); } if($('navMenuBtn')) $('navMenuBtn').setAttribute('aria-expanded','false'); }
 function weekRangeText(){ const days=visibleDayCount(); const start=state.weekStart; const end=addDays(start, days-1); return `${fmtDate(start)} – ${fmtDate(end)}`; }
 function visibleDayCount(){ return window.matchMedia('(max-width: 760px) and (orientation: portrait)').matches && !document.body.classList.contains('focus-day') ? 3 : 7; }
+
+
+function setupSwipeNavigation(){
+  const grid = $('calendarGrid');
+  if(!grid) return;
+  let startX = 0;
+  let startY = 0;
+  let tracking = false;
+  let startedOnInteractive = false;
+  const isTouchLayout = () => window.matchMedia('(pointer: coarse), (max-width: 1024px)').matches;
+  const isInteractiveTarget = target => !!target.closest('button, input, select, textarea, dialog, .event-block, .day-header, .add-day');
+
+  grid.addEventListener('touchstart', ev => {
+    if(!isTouchLayout() || ev.touches.length !== 1) return;
+    tracking = true;
+    startedOnInteractive = isInteractiveTarget(ev.target);
+    startX = ev.touches[0].clientX;
+    startY = ev.touches[0].clientY;
+  }, { passive:true });
+
+  grid.addEventListener('touchend', ev => {
+    if(!tracking || startedOnInteractive || !isTouchLayout()) { tracking = false; return; }
+    const touch = ev.changedTouches[0];
+    const dx = touch.clientX - startX;
+    const dy = touch.clientY - startY;
+    tracking = false;
+    if(Math.abs(dx) < 55 || Math.abs(dx) < Math.abs(dy) * 1.35) return;
+    state.weekStart = addDays(state.weekStart, dx < 0 ? 1 : -1);
+    closeToolbarMenu();
+    render();
+  }, { passive:true });
+}
 
 function fillPersonSelect(){ $('personSelect').innerHTML=Object.entries(PEOPLE).map(([k,p])=>`<option value="${k}">${p.label}</option>`).join(''); fillPresetSelect(); fillPalette(); }
 function fillPresetSelect(){ const p=$('personSelect').value||'donna'; $('presetSelect').innerHTML=PEOPLE[p].presets.map(x=>{ const c=PEOPLE[p].palette[PRESET_DEFAULT[x] ?? 0]; return `<option style="background:${c}">${x}</option>`; }).join(''); }

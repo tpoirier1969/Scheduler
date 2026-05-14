@@ -37,7 +37,7 @@ input, select, textarea { border:1px solid var(--line); border-radius:9px; paddi
 .density-level-easy { border-left:6px solid #9ebca3; }
 .density-level-busy { border-left:6px solid #d5a84f; }
 .density-level-heavy { border-left:6px solid #b36a5e; }
-.calendar-grid { display:grid; grid-template-columns:repeat(7, minmax(150px,1fr)); gap:.45rem; padding:0 clamp(.5rem,2vw,1rem) .75rem; overflow-x:auto; align-items:start; }
+.calendar-grid { touch-action:pan-y; display:grid; grid-template-columns:repeat(7, minmax(150px,1fr)); gap:.45rem; padding:0 clamp(.5rem,2vw,1rem) .75rem; overflow-x:auto; align-items:start; }
 .day-column { min-width:150px; background:var(--panel); border:1px solid var(--line); border-radius:12px; overflow:hidden; box-shadow:0 5px 12px rgba(50,40,30,.045); }
 .day-header { position:relative; z-index:5; background:#fffaf3; border-bottom:1px solid var(--line); padding:.38rem .44rem; display:flex; justify-content:space-between; align-items:center; }
 .day-header strong { display:block; font-size:.8rem; line-height:1.02; }
