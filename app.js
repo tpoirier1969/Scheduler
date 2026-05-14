@@ -272,10 +272,10 @@ function renderMonthView(events, monthDate){
     cell.onclick=()=>{
       state.weekStart=startOfWeek(d);
       state.viewMode='week';
-      document.body.classList.remove('month-view-active');
-      if(window.matchMedia('(max-width: 760px)').matches){ state.focusDate=ds; document.body.classList.add('focus-day','zoom-detailed'); document.body.classList.remove('zoom-compact'); const z=$('zoomSelect'); if(z) z.value='detailed'; }
-      else { state.focusDate=null; document.body.classList.remove('focus-day'); }
+      state.focusDate=null;
       state.pendingScrollDate=ds;
+      document.body.classList.remove('month-view-active','focus-day');
+      closeToolbarMenu();
       render();
     };
     grid.appendChild(cell);
