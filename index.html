@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Our Scheduler</title>
   <link rel="icon" href="our-scheduler-icon.svg?v=1.5" type="image/svg+xml" />
-  <link rel="stylesheet" href="styles.css?v=1.13" />
+  <link rel="stylesheet" href="styles.css?v=1.14" />
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="config.js?v=1.5"></script>
 </head>
@@ -15,7 +15,7 @@
       <img src="our-scheduler-icon.svg?v=1.5" alt="" class="app-icon" />
       <div>
         <h1>Our Scheduler</h1>
-        <p class="version">V1.13 · shared weekly planner</p>
+        <p class="version">V1.14 · shared weekly planner</p>
       </div>
     </div>
     <button id="addEventBtn" class="primary compact-add">+ Add</button>
@@ -24,6 +24,7 @@
   <nav class="toolbar" aria-label="Calendar controls">
     <button id="navMenuBtn" class="mobile-menu-button" type="button" aria-expanded="false" aria-controls="toolbarMenu">☰</button>
     <button id="weekRangeBtn" class="week-range-button" type="button">This week</button>
+    <button id="monthToggleBtn" class="month-toggle-button" type="button" aria-label="Month view" title="Month view">▦</button>
     <div class="week-nav">
       <button id="prevWeekBtn" aria-label="Previous week">‹</button>
       <button id="todayBtn">Today</button>
@@ -132,6 +133,6 @@
   </dialog>
 
   <script src="seed-events.js?v=1.5"></script>
-  <script src="app.js?v=1.13"></script>
+  <script src="app.js?v=1.14"></script>
 </body>
 </html>

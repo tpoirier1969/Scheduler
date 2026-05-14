@@ -86,7 +86,8 @@ function setupControls(){
   $('nextWeekBtn').onclick=()=>{ shiftVisibleRange(1); closeToolbarMenu(); render(); };
   $('todayBtn').onclick=()=>{ state.weekStart=startOfWeek(new Date()); closeToolbarMenu(); render(); };
   $('menuTodayBtn').onclick=()=>{ state.weekStart=startOfWeek(new Date()); state.viewMode='week'; document.body.classList.remove('month-view-active'); closeToolbarMenu(); render(); };
-  $('monthViewBtn').onclick=()=>{ state.viewMode = state.viewMode==='month' ? 'week' : 'month'; document.body.classList.toggle('month-view-active', state.viewMode==='month'); closeToolbarMenu(); render(); };
+  $('monthViewBtn').onclick=()=>toggleMonthView();
+  if($('monthToggleBtn')) $('monthToggleBtn').onclick=()=>toggleMonthView();
   $('weekRangeBtn').onclick=()=>toggleToolbarMenu();
   $('navMenuBtn').onclick=()=>toggleToolbarMenu();
   $('weekPicker').onchange=e=>{ if(e.target.value){ state.weekStart=startOfWeek(new Date(e.target.value+'T00:00')); state.viewMode='week'; document.body.classList.remove('month-view-active'); closeToolbarMenu(); render(); } };
@@ -106,6 +107,7 @@ function setupControls(){
 }
 function toggleToolbarMenu(){ const tb=document.querySelector('.toolbar'); const open=!tb.classList.contains('menu-open'); tb.classList.toggle('menu-open', open); $('navMenuBtn').setAttribute('aria-expanded', String(open)); }
 function closeToolbarMenu(){ const tb=document.querySelector('.toolbar'); if(tb){ tb.classList.remove('menu-open'); } if($('navMenuBtn')) $('navMenuBtn').setAttribute('aria-expanded','false'); }
+function toggleMonthView(){ state.viewMode = state.viewMode==='month' ? 'week' : 'month'; document.body.classList.toggle('month-view-active', state.viewMode==='month'); closeToolbarMenu(); render(); }
 function visibleRangeStart(){ return isScrollableDayRail() ? new Date((firstVisibleRailDate() || isoDate(state.weekStart))+'T00:00') : state.weekStart; }
 function monthTitle(d){ return d.toLocaleDateString(undefined,{month:'long',year:'numeric'}); }
 function shiftVisibleRange(direction){
@@ -164,14 +166,22 @@ function scrollRailToDate(dateStr){
   if(!col) return;
   state.adjustingScroll=true;
   grid.scrollLeft = Math.max(0, col.offsetLeft - 6);
-  setTimeout(()=>{ state.adjustingScroll=false; }, 120);
+  setTimeout(()=>{ state.adjustingScroll=false; updateVisibleRangeUI(); }, 120);
 }
 function firstVisibleRailDate(){
   const grid=$('calendarGrid');
   if(!grid) return isoDate(state.weekStart);
-  const x=grid.scrollLeft + 8;
+  const gridRect=grid.getBoundingClientRect();
   let best=null;
-  for(const col of grid.children){ if(col.offsetLeft + col.offsetWidth > x){ best=col; break; } }
+  let bestOverlap=-1;
+  for(const col of grid.children){
+    const r=col.getBoundingClientRect();
+    const overlap=Math.min(r.right, gridRect.right)-Math.max(r.left, gridRect.left);
+    if(overlap>bestOverlap){ bestOverlap=overlap; best=col; }
+    if(overlap > r.width * 0.52 && r.left >= gridRect.left - 8){
+      return col.dataset.date || isoDate(state.weekStart);
+    }
+  }
   return best?.dataset.date || isoDate(state.weekStart);
 }
 function checkRailEdges(){
@@ -216,6 +226,7 @@ function render(){
   $('weekRangeBtn').textContent=weekRangeText();
   document.body.classList.toggle('month-view-active', state.viewMode==='month');
   if($('monthViewBtn')) $('monthViewBtn').textContent = state.viewMode==='month' ? 'Week view' : 'Month view';
+  if($('monthToggleBtn')) $('monthToggleBtn').textContent = state.viewMode==='month' ? '▤' : '▦';
   if(state.viewMode==='month'){
     const monthDate=addDays(state.weekStart,3);
     const events=expandEventsForRange(monthStartGrid(monthDate), 42);
@@ -251,7 +262,7 @@ function renderMonthView(events, monthDate){
     const dayEvents=events.filter(e=>e.date===ds && e.status!=='cancelled');
     const cell=document.createElement('button');
     cell.type='button';
-    cell.className='month-day'+(d.getMonth()!==currentMonth?' outside-month':'')+(ds===isoDate(new Date())?' today-month':'');
+    cell.className='month-day'+(d.getMonth()!==currentMonth?' outside-month':'')+(ds<isoDate(new Date())?' past-month':'')+(ds===isoDate(new Date())?' today-month':'');
     const dots=dayEvents.slice(0,6).map(e=>{
       const label=(PEOPLE[e.person_key]?.label || '?').charAt(0);
       return `<span class="month-dot" style="background:${escapeHtml(e.color||'#ddd')}">${escapeHtml(label)}</span>`;
@@ -275,7 +286,7 @@ function renderDensity(events){
   for(let i=0;i<7;i++){ const d=addDays(state.weekStart,i); const ds=isoDate(d); const dayEvents=events.filter(e=>e.date===ds && e.status!=='cancelled'); const total=dayEvents.reduce((s,e)=>s+Math.max(0,hmToMin(e.end_time)-hmToMin(e.start_time)),0);
     const lunchFree=hasGap(dayEvents, 11*60, 14*60, 45);
     const level= total>=360 ? 'heavy' : total>=210 ? 'busy' : 'easy';
-    const div=document.createElement('div'); div.className=`density-card density-level-${level}`;
+    const div=document.createElement('div'); div.className=`density-card density-level-${level}${ds<isoDate(new Date())?' past-density':''}`;
     div.innerHTML=`<div class="density-title">${fmtDay(d)} ${fmtDate(d)} · ${Math.round(total/60*10)/10} hrs</div><div class="density-note">${lunchFree?'Lunch window OK':'Lunch risk: no 45-min gap 11–2'}</div>`;
     panel.appendChild(div);
   }
@@ -290,7 +301,7 @@ function renderGrid(events){
   const phoneCarousel = isScrollableDayRail();
   const range=renderRange();
   grid.classList.toggle('phone-carousel', phoneCarousel);
-  for(let i=0;i<range.days;i++){ const d=addDays(range.start,i); const ds=isoDate(d); const col=document.createElement('section'); col.className='day-column'+(ds===today?' current-day':''); col.dataset.date=ds;
+  for(let i=0;i<range.days;i++){ const d=addDays(range.start,i); const ds=isoDate(d); const col=document.createElement('section'); col.className='day-column'+(ds===today?' current-day':'')+(ds<today?' past-day':''); col.dataset.date=ds;
     if(state.focusDate===ds) col.classList.add('focused');
     col.innerHTML=`<div class="day-header" title="Double-click to zoom this day"><div><strong>${fmtDay(d)}</strong><small>${fmtDate(d)}</small></div><button class="add-day" aria-label="Add event">+</button></div><div class="day-timeline"><div class="half-lines"></div></div>`;
     col.querySelector('.day-header').ondblclick=(ev)=>{ if(ev.target.closest('button')) return; state.focusDate = state.focusDate===ds ? null : ds; document.body.classList.toggle('focus-day', !!state.focusDate); render(); };
@@ -329,7 +340,7 @@ function renderPrint(events, startArg=null, daysArg=null){
     const ds=isoDate(d);
     const dayEvents=events.filter(e=>e.date===ds).sort((a,b)=>hmToMin(a.start_time)-hmToMin(b.start_time));
     const wrap=document.createElement('div');
-    wrap.className='print-day';
+    wrap.className='print-day'+(ds<isoDate(new Date())?' past-print':'');
     wrap.innerHTML=`<h3>${fmtDay(d)} ${fmtDate(d)}</h3>` + (dayEvents.length?`<ul>${dayEvents.map(e=>`<li>${fmtTime(e.start_time)}–${fmtTime(e.end_time)} · ${escapeHtml(e.title)} · ${PEOPLE[e.person_key]?.label} · ${e.preset_name}${e.status==='no_show'?' · NO-SHOW':''}</li>`).join('')}</ul>`:'<p>No blocks.</p>');
     box.appendChild(wrap);
   }

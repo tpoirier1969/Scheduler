@@ -705,3 +705,61 @@ body.month-view-active .print-overview { display:none !important; }
   .month-dot { width: .82rem; height: .82rem; border-radius: 3px; font-size: .42rem; }
   .month-extra { font-size: .45rem; }
 }
+
+/* V1.14: direct month toggle + past-day dimming */
+.month-toggle-button { display:none; }
+@media (max-width: 760px) {
+  .toolbar {
+    gap: 3px !important;
+  }
+  .month-toggle-button {
+    order: 3 !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    flex: 0 0 26px !important;
+    width: 26px !important;
+    min-width: 26px !important;
+    height: 26px !important;
+    min-height: 26px !important;
+    max-height: 26px !important;
+    padding: 0 !important;
+    border-radius: 8px !important;
+    font-size: 13px !important;
+    line-height: 1 !important;
+  }
+  .week-nav { order: 4 !important; }
+  #prevWeekBtn,
+  #nextWeekBtn {
+    flex: 0 0 26px !important;
+    width: 26px !important;
+    min-width: 26px !important;
+  }
+  .toolbar.menu-open .menu-today {
+    display: block !important;
+  }
+}
+
+.day-column.past-day .day-header {
+  background: #eee9e1 !important;
+  color: #7b746b;
+}
+.day-column.past-day .day-timeline {
+  background-color: #f4f0e9;
+}
+.day-column.past-day .event-block {
+  opacity: .72;
+  filter: grayscale(.18);
+}
+.density-card.past-density,
+.print-day.past-print {
+  opacity: .62;
+}
+.month-day.past-month {
+  background: #f0ece4;
+  color: #777067;
+}
+.month-day.past-month .month-dot {
+  opacity: .72;
+  filter: grayscale(.2);
+}
