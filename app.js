@@ -248,8 +248,19 @@ function eventEl(e){
 }
 function renderPrint(events){
   const box=$('printList'); box.innerHTML='';
-  for(let i=0;i<7;i++){ const d=addDays(state.weekStart,i); const ds=isoDate(d); const dayEvents=events.filter(e=>e.date===ds).sort((a,b)=>hmToMin(a.start_time)-hmToMin(b.start_time)); const wrap=document.createElement('div'); wrap.className='print-day';
-    wrap.innerHTML=`<h3>${fmtDay(d)} ${fmtDate(d)}</h3>` + (dayEvents.length?`<ul>${dayEvents.map(e=>`<li>${fmtTime(e.start_time)}–${fmtTime(e.end_time)} · ${escapeHtml(e.title)} · ${PEOPLE[e.person_key]?.label} · ${e.preset_name}${e.status==='no_show'?' · NO-SHOW':''}</li>`).join('')}</ul>`:'<p>No blocks.</p>'); box.appendChild(wrap);
+  const days = visibleDayCount();
+  const start = state.weekStart;
+  const end = addDays(start, days-1);
+  const heading = document.querySelector('.print-card h2');
+  if(heading) heading.textContent = days===7 ? 'Weekly overview' : `${days}-day overview`;
+  for(let i=0;i<days;i++){
+    const d=addDays(start,i);
+    const ds=isoDate(d);
+    const dayEvents=events.filter(e=>e.date===ds).sort((a,b)=>hmToMin(a.start_time)-hmToMin(b.start_time));
+    const wrap=document.createElement('div');
+    wrap.className='print-day';
+    wrap.innerHTML=`<h3>${fmtDay(d)} ${fmtDate(d)}</h3>` + (dayEvents.length?`<ul>${dayEvents.map(e=>`<li>${fmtTime(e.start_time)}–${fmtTime(e.end_time)} · ${escapeHtml(e.title)} · ${PEOPLE[e.person_key]?.label} · ${e.preset_name}${e.status==='no_show'?' · NO-SHOW':''}</li>`).join('')}</ul>`:'<p>No blocks.</p>');
+    box.appendChild(wrap);
   }
 }
 
