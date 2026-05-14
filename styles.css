@@ -163,3 +163,197 @@ body.focus-day .day-column.focused { display:block; min-width:calc(100vw - 1rem)
   .print-overview { display:block; border:0; box-shadow:none; margin:0; }
   body { background:white; color:black; }
 }
+
+
+/* V1.5 hard mobile compression + cache-bust fix */
+@media (max-width: 760px) {
+  .app-header {
+    height: 38px !important;
+    min-height: 38px !important;
+    padding: 3px 6px !important;
+    display: flex !important;
+    align-items: center !important;
+    gap: 6px !important;
+  }
+  .brand-lockup {
+    display: flex !important;
+    align-items: center !important;
+    gap: 6px !important;
+    min-width: 0 !important;
+  }
+  .app-icon {
+    width: 22px !important;
+    height: 22px !important;
+    max-width: 22px !important;
+    max-height: 22px !important;
+    flex: 0 0 22px !important;
+  }
+  h1 {
+    font-size: 13px !important;
+    line-height: 1 !important;
+    margin: 0 !important;
+  }
+  .version {
+    font-size: 8px !important;
+    line-height: 1 !important;
+    margin: 1px 0 0 !important;
+    white-space: nowrap !important;
+  }
+  .compact-add {
+    font-size: 11px !important;
+    line-height: 1 !important;
+    min-height: 24px !important;
+    padding: 5px 9px !important;
+    border-radius: 999px !important;
+    flex: 0 0 auto !important;
+  }
+  .toolbar {
+    top: 38px !important;
+    height: 32px !important;
+    min-height: 32px !important;
+    padding: 3px 6px !important;
+    display: grid !important;
+    grid-template-columns: 28px minmax(0, 1fr) 28px 28px !important;
+    align-items: center !important;
+    gap: 4px !important;
+  }
+  .mobile-menu-button,
+  .week-range-button,
+  #prevWeekBtn,
+  #nextWeekBtn {
+    display: block !important;
+    min-width: 0 !important;
+    width: auto !important;
+    height: 26px !important;
+    min-height: 26px !important;
+    padding: 0 6px !important;
+    border-radius: 8px !important;
+    line-height: 1 !important;
+    font-size: 13px !important;
+  }
+  #todayBtn,
+  .menu-today {
+    display: none !important;
+  }
+  .week-nav {
+    display: contents !important;
+  }
+  #navMenuBtn { grid-column: 1 !important; }
+  #weekRangeBtn {
+    grid-column: 2 !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    white-space: nowrap !important;
+    font-weight: 700 !important;
+    text-align: center !important;
+  }
+  #prevWeekBtn { grid-column: 3 !important; }
+  #nextWeekBtn { grid-column: 4 !important; }
+  .toolbar-stack {
+    display: none !important;
+    position: absolute !important;
+    left: 6px !important;
+    right: 6px !important;
+    top: calc(100% + 4px) !important;
+    grid-template-columns: 1fr !important;
+    gap: 6px !important;
+    background: var(--panel) !important;
+    border: 1px solid var(--line) !important;
+    border-radius: 10px !important;
+    padding: 8px !important;
+    box-shadow: 0 12px 28px rgba(40,32,25,.25) !important;
+    z-index: 80 !important;
+  }
+  .toolbar.menu-open .toolbar-stack {
+    display: grid !important;
+  }
+  .toolbar-stack input,
+  .toolbar-stack select,
+  .toolbar-stack button {
+    min-height: 30px !important;
+    padding: 5px 8px !important;
+    font-size: 12px !important;
+  }
+  .jump-label,
+  .calendar-label {
+    font-size: 10px !important;
+    gap: 2px !important;
+  }
+  .mobile-zoom { display:block !important; width:100% !important; }
+  .density-panel { display:none !important; }
+  .calendar-grid {
+    padding-top: 6px !important;
+    grid-template-columns: repeat(3, minmax(104px, 1fr)) !important;
+    gap: 4px !important;
+  }
+  .day-column { min-width: 104px !important; }
+  .day-header { padding: 5px 6px !important; }
+  .day-header strong { font-size: 12px !important; }
+  .day-header small { font-size: 10px !important; }
+  .add-day {
+    width: 24px !important;
+    height: 24px !important;
+    min-width: 24px !important;
+    padding: 0 !important;
+    font-size: 14px !important;
+  }
+  .time-label {
+    font-size: 8px !important;
+    left: 2px !important;
+    max-width: 30px !important;
+    transform: translateY(-100%) !important;
+    margin-top: -1px !important;
+  }
+  .time-label.start-label {
+    transform: translateY(0) !important;
+    margin-top: 1px !important;
+  }
+  .event-block {
+    left: 31px !important;
+    right: 2px !important;
+    padding: 1px 3px !important;
+    border-radius: 4px !important;
+    align-items: flex-start !important;
+  }
+  .event-title {
+    font-size: 9px !important;
+    line-height: 1.05 !important;
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+  }
+  .event-meta,
+  .event-time { display:none !important; }
+  body.zoom-detailed .event-meta {
+    display:block !important;
+    font-size: 8px !important;
+    line-height:1 !important;
+    white-space: nowrap !important;
+    overflow:hidden !important;
+    text-overflow:ellipsis !important;
+  }
+}
+
+@media (min-width: 761px) {
+  .event-title {
+    font-size: 9px !important;
+    line-height: 1.05 !important;
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+  }
+  .event-meta,
+  .event-time { display:none !important; }
+  .event-block {
+    padding: 2px 5px !important;
+    align-items: flex-start !important;
+  }
+  .time-label {
+    transform: translateY(-100%) !important;
+    margin-top: -2px !important;
+  }
+  .time-label.start-label {
+    transform: translateY(0) !important;
+    margin-top: 1px !important;
+  }
+}
