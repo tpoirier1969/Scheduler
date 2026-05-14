@@ -110,8 +110,7 @@ function visibleDayCount(){ return window.matchMedia('(max-width: 760px) and (or
 
 
 function setupSwipeNavigation(){
-  // V1.7: use native horizontal scrolling/snap on phones so days move with the finger.
-  // The old transform-based carousel could render columns off-screen on iOS.
+  // V1.8: native horizontal scrolling/snap on phones. Keep touch handling browser-native so days visibly move with the finger.
   const grid = $('calendarGrid');
   if(!grid) return;
   grid.addEventListener('wheel', ev => {
@@ -119,6 +118,7 @@ function setupSwipeNavigation(){
       grid.scrollLeft += ev.deltaY;
     }
   }, { passive:true });
+  grid.addEventListener('touchstart', () => {}, { passive:true });
 }
 
 function resetCarouselPosition(){
