@@ -637,3 +637,71 @@ body.focus-day .day-column.focused { display:block; min-width:calc(100vw - 1rem)
     overflow: visible !important;
   }
 }
+
+/* V1.13: phone-friendly month view */
+.month-view {
+  margin: .45rem clamp(.4rem, 2vw, 1rem) .8rem;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  overflow: hidden;
+  box-shadow: 0 5px 12px rgba(50,40,30,.045);
+}
+.month-header-row,
+.month-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+}
+.month-header-row > div {
+  padding: .38rem .18rem;
+  text-align: center;
+  font-weight: 800;
+  font-size: .64rem;
+  background: #fffaf3;
+  border-bottom: 1px solid var(--line);
+  color: var(--muted);
+}
+.month-day {
+  min-height: 72px;
+  border: 0;
+  border-right: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+  border-radius: 0;
+  background: #fffdfa;
+  padding: .22rem;
+  display: grid;
+  grid-template-rows: auto 1fr;
+  align-items: start;
+  text-align: left;
+}
+.month-day:nth-child(7n) { border-right: 0; }
+.month-date { font-weight: 800; font-size: .68rem; line-height: 1; }
+.outside-month { opacity: .44; background: #f8f5ef; }
+.today-month { box-shadow: inset 0 0 0 2px rgba(47,93,98,.36); }
+.month-dots { display: flex; flex-wrap: wrap; gap: .12rem; align-content: start; margin-top: .22rem; }
+.month-dot {
+  width: 1.05rem;
+  height: 1.05rem;
+  border-radius: 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: .52rem;
+  font-weight: 850;
+  color: rgba(0,0,0,.68);
+  border: 1px solid rgba(0,0,0,.08);
+}
+.month-extra { font-size: .55rem; color: var(--muted); align-self: center; }
+body.month-view-active .calendar-grid,
+body.month-view-active .density-panel,
+body.month-view-active .print-overview { display:none !important; }
+
+@media (max-width:760px) {
+  .month-view { margin: .28rem .32rem .55rem; border-radius: 12px; }
+  .month-header-row > div { padding: .28rem .05rem; font-size: .52rem; }
+  .month-day { min-height: 54px; padding: .14rem; }
+  .month-date { font-size: .58rem; }
+  .month-dots { gap: .08rem; margin-top: .14rem; }
+  .month-dot { width: .82rem; height: .82rem; border-radius: 3px; font-size: .42rem; }
+  .month-extra { font-size: .45rem; }
+}

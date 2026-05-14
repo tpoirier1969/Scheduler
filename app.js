@@ -7,7 +7,7 @@ const PEOPLE = {
 const PRESET_DEFAULT = { Class:0, Lesson:1, Rehearsal:2, Meeting:3, Performance:4, 'No-show':6, Event:2, Doctor:0, Hair:1, Church:6, Appointment:2, Camping:0, Roadtrip:3, Shopping:1, Friends:4, Family:2, Other:7 };
 const START_HOUR = 7;
 const END_HOUR = 22;
-let state = { weekStart: startOfWeek(new Date()), filter:'all', events:[], selectedColor:'#c8dff0', supabase:null, storageMode:'local', focusDate:null, detailsEvent:null, pendingScrollDate:null, adjustingScroll:false };
+let state = { weekStart: startOfWeek(new Date()), filter:'all', events:[], selectedColor:'#c8dff0', supabase:null, storageMode:'local', focusDate:null, detailsEvent:null, pendingScrollDate:null, adjustingScroll:false, viewMode:'week' };
 
 const $ = id => document.getElementById(id);
 function startOfWeek(d){ const x=new Date(d); x.setHours(0,0,0,0); const day=x.getDay(); const diff=(day+6)%7; x.setDate(x.getDate()-diff); return x; }
@@ -82,13 +82,14 @@ async function deleteEvent(id){
 async function saveAllLocal(){ localStorage.setItem('tod_donna_calendar_events_v1', JSON.stringify(state.events)); }
 
 function setupControls(){
-  $('prevWeekBtn').onclick=()=>{ state.weekStart=addDays(state.weekStart,-7); closeToolbarMenu(); render(); };
-  $('nextWeekBtn').onclick=()=>{ state.weekStart=addDays(state.weekStart,7); closeToolbarMenu(); render(); };
+  $('prevWeekBtn').onclick=()=>{ shiftVisibleRange(-1); closeToolbarMenu(); render(); };
+  $('nextWeekBtn').onclick=()=>{ shiftVisibleRange(1); closeToolbarMenu(); render(); };
   $('todayBtn').onclick=()=>{ state.weekStart=startOfWeek(new Date()); closeToolbarMenu(); render(); };
-  $('menuTodayBtn').onclick=()=>{ state.weekStart=startOfWeek(new Date()); closeToolbarMenu(); render(); };
+  $('menuTodayBtn').onclick=()=>{ state.weekStart=startOfWeek(new Date()); state.viewMode='week'; document.body.classList.remove('month-view-active'); closeToolbarMenu(); render(); };
+  $('monthViewBtn').onclick=()=>{ state.viewMode = state.viewMode==='month' ? 'week' : 'month'; document.body.classList.toggle('month-view-active', state.viewMode==='month'); closeToolbarMenu(); render(); };
   $('weekRangeBtn').onclick=()=>toggleToolbarMenu();
   $('navMenuBtn').onclick=()=>toggleToolbarMenu();
-  $('weekPicker').onchange=e=>{ if(e.target.value){ state.weekStart=startOfWeek(new Date(e.target.value+'T00:00')); closeToolbarMenu(); render(); } };
+  $('weekPicker').onchange=e=>{ if(e.target.value){ state.weekStart=startOfWeek(new Date(e.target.value+'T00:00')); state.viewMode='week'; document.body.classList.remove('month-view-active'); closeToolbarMenu(); render(); } };
   $('zoomSelect').onchange=e=>{ document.body.classList.remove('zoom-compact','zoom-detailed'); document.body.classList.add('zoom-'+e.target.value); };
   $('calendarSelect').onchange=e=>{ state.filter=e.target.value; state.focusDate=null; document.body.classList.remove('focus-day'); closeToolbarMenu(); render(); };
   $('addEventBtn').onclick=()=>openDialog({date: isoDate(state.weekStart), start_time:'09:00', end_time:'09:30', person_key:'donna'});
@@ -106,8 +107,14 @@ function setupControls(){
 function toggleToolbarMenu(){ const tb=document.querySelector('.toolbar'); const open=!tb.classList.contains('menu-open'); tb.classList.toggle('menu-open', open); $('navMenuBtn').setAttribute('aria-expanded', String(open)); }
 function closeToolbarMenu(){ const tb=document.querySelector('.toolbar'); if(tb){ tb.classList.remove('menu-open'); } if($('navMenuBtn')) $('navMenuBtn').setAttribute('aria-expanded','false'); }
 function visibleRangeStart(){ return isScrollableDayRail() ? new Date((firstVisibleRailDate() || isoDate(state.weekStart))+'T00:00') : state.weekStart; }
-function weekRangeText(startOverride=null){ const days=visibleDayCount(); const start=startOverride || visibleRangeStart(); const end=addDays(start, days-1); return `${fmtDate(start)} – ${fmtDate(end)}`; }
+function monthTitle(d){ return d.toLocaleDateString(undefined,{month:'long',year:'numeric'}); }
+function shiftVisibleRange(direction){
+  if(state.viewMode==='month'){ const d=new Date(state.weekStart); d.setDate(1); d.setMonth(d.getMonth()+direction); state.weekStart=startOfWeek(d); return; }
+  state.weekStart=addDays(state.weekStart, direction*7);
+}
+function weekRangeText(startOverride=null){ if(state.viewMode==='month') return monthTitle(addDays(state.weekStart,3)); const days=visibleDayCount(); const start=startOverride || visibleRangeStart(); const end=addDays(start, days-1); return `${fmtDate(start)} – ${fmtDate(end)}`; }
 function updateVisibleRangeUI(){
+  if(state.viewMode==='month') return;
   const start=visibleRangeStart();
   const days=visibleDayCount();
   $('weekRangeBtn').textContent=weekRangeText(start);
@@ -207,9 +214,61 @@ function expandEventsForRange(rangeStart, rangeDays){
 function render(){
   $('weekPicker').value=isoDate(state.weekStart);
   $('weekRangeBtn').textContent=weekRangeText();
+  document.body.classList.toggle('month-view-active', state.viewMode==='month');
+  if($('monthViewBtn')) $('monthViewBtn').textContent = state.viewMode==='month' ? 'Week view' : 'Month view';
+  if(state.viewMode==='month'){
+    const monthDate=addDays(state.weekStart,3);
+    const events=expandEventsForRange(monthStartGrid(monthDate), 42);
+    renderMonthView(events, monthDate);
+    return;
+  }
+  $('monthView').classList.add('hidden');
   const range=renderRange();
   const events=expandEventsForRange(range.start, range.days);
   renderDensity(events); renderGrid(events); renderPrint(events, visibleRangeStart(), visibleDayCount());
+}
+
+function monthStartGrid(d){
+  const first=new Date(d.getFullYear(), d.getMonth(), 1);
+  const dow=first.getDay();
+  const mondayOffset=(dow+6)%7;
+  return addDays(first, -mondayOffset);
+}
+function renderMonthView(events, monthDate){
+  const monthBox=$('monthView');
+  monthBox.classList.remove('hidden');
+  $('calendarGrid').innerHTML='';
+  $('densityPanel').innerHTML='';
+  $('printList').innerHTML='';
+  const start=monthStartGrid(monthDate);
+  const currentMonth=monthDate.getMonth();
+  const weekdayLabels=['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+  monthBox.innerHTML = `<div class="month-header-row">${weekdayLabels.map(x=>`<div>${x}</div>`).join('')}</div><div class="month-grid"></div>`;
+  const grid=monthBox.querySelector('.month-grid');
+  for(let i=0;i<42;i++){
+    const d=addDays(start,i);
+    const ds=isoDate(d);
+    const dayEvents=events.filter(e=>e.date===ds && e.status!=='cancelled');
+    const cell=document.createElement('button');
+    cell.type='button';
+    cell.className='month-day'+(d.getMonth()!==currentMonth?' outside-month':'')+(ds===isoDate(new Date())?' today-month':'');
+    const dots=dayEvents.slice(0,6).map(e=>{
+      const label=(PEOPLE[e.person_key]?.label || '?').charAt(0);
+      return `<span class="month-dot" style="background:${escapeHtml(e.color||'#ddd')}">${escapeHtml(label)}</span>`;
+    }).join('');
+    const extra=dayEvents.length>6 ? `<span class="month-extra">+${dayEvents.length-6}</span>` : '';
+    cell.innerHTML=`<span class="month-date">${d.getDate()}</span><span class="month-dots">${dots}${extra}</span>`;
+    cell.onclick=()=>{
+      state.weekStart=startOfWeek(d);
+      state.viewMode='week';
+      document.body.classList.remove('month-view-active');
+      if(window.matchMedia('(max-width: 760px)').matches){ state.focusDate=ds; document.body.classList.add('focus-day','zoom-detailed'); document.body.classList.remove('zoom-compact'); const z=$('zoomSelect'); if(z) z.value='detailed'; }
+      else { state.focusDate=null; document.body.classList.remove('focus-day'); }
+      state.pendingScrollDate=ds;
+      render();
+    };
+    grid.appendChild(cell);
+  }
 }
 function renderDensity(events){
   const panel=$('densityPanel'); panel.innerHTML='';
