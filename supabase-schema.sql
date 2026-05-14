@@ -1,4 +1,4 @@
--- Tod + Donna Shared Calendar V1
+-- Our Scheduler V1
 -- All database objects are project-scoped with tod_donna_calendar_ to avoid collisions.
 
 create extension if not exists pgcrypto;

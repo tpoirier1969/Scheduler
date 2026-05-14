@@ -1,4 +1,4 @@
-# Tod + Donna Shared Calendar V1.0
+# Our Scheduler V1.1
 
 A responsive shared weekly calendar for Donna, Tod, Frank, and Shared events.
 

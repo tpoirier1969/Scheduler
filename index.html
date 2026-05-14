@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Tod + Donna Calendar</title>
+  <title>Our Scheduler</title>
   <link rel="stylesheet" href="styles.css" />
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="config.js"></script>
@@ -11,31 +11,35 @@
 <body>
   <header class="app-header">
     <div>
-      <h1>Tod + Donna Calendar</h1>
-      <p class="version">V1.0 · shared weekly planner</p>
+      <h1>Our Scheduler</h1>
+      <p class="version">V1.1 · shared weekly planner</p>
     </div>
-    <button id="addEventBtn" class="primary">+ Add block</button>
+    <button id="addEventBtn" class="primary compact-add">+ Add</button>
   </header>
 
   <nav class="toolbar" aria-label="Calendar controls">
-    <button id="prevWeekBtn">‹ Previous</button>
-    <button id="todayBtn">Today</button>
-    <button id="nextWeekBtn">Next ›</button>
-    <label class="jump-label">Jump to week <input id="weekPicker" type="date" /></label>
-    <select id="zoomSelect" aria-label="Zoom level">
-      <option value="compact">Compact</option>
-      <option value="normal" selected>Normal</option>
+    <div class="week-nav">
+      <button id="prevWeekBtn" aria-label="Previous week">‹</button>
+      <button id="todayBtn">Today</button>
+      <button id="nextWeekBtn" aria-label="Next week">›</button>
+    </div>
+    <div class="toolbar-stack">
+      <label class="jump-label">Jump to week <input id="weekPicker" type="date" /></label>
+      <label class="calendar-label">Calendar
+        <select id="calendarSelect" aria-label="Calendar filter">
+          <option value="all">All</option>
+          <option value="donna">Donna</option>
+          <option value="tod">Tod</option>
+          <option value="frank">Frank</option>
+          <option value="shared">Shared</option>
+        </select>
+      </label>
+    </div>
+    <select id="zoomSelect" class="mobile-zoom" aria-label="Zoom level">
+      <option value="compact" selected>Compact</option>
       <option value="detailed">Detailed</option>
     </select>
   </nav>
-
-  <section class="filterbar" aria-label="Person filters">
-    <button data-filter="all" class="filter active">All</button>
-    <button data-filter="donna" class="filter">Donna</button>
-    <button data-filter="tod" class="filter">Tod</button>
-    <button data-filter="frank" class="filter">Frank</button>
-    <button data-filter="shared" class="filter">Shared</button>
-  </section>
 
   <section id="densityPanel" class="density-panel" aria-live="polite"></section>
 
@@ -49,10 +53,10 @@
 
   <dialog id="eventDialog">
     <form method="dialog" id="eventForm" class="event-form">
-      <h2 id="dialogTitle">Add block</h2>
+      <div class="dialog-title-row"><h2 id="dialogTitle">+ Add</h2><label class="date-inline">Date <input id="eventDate" type="date" required /></label></div>
       <input type="hidden" id="eventId" />
       <label>Title <input id="eventTitle" required /></label>
-      <div class="form-row">
+      <div class="form-row two-col">
         <label>Person
           <select id="personSelect"></select>
         </label>
@@ -60,8 +64,7 @@
           <select id="presetSelect"></select>
         </label>
       </div>
-      <div class="form-row">
-        <label>Date <input id="eventDate" type="date" required /></label>
+      <div class="form-row two-col">
         <label>Start <input id="startTime" type="time" step="1800" required /></label>
         <label>End <input id="endTime" type="time" step="1800" required /></label>
       </div>
@@ -99,7 +102,7 @@
       <label>Notes <textarea id="eventNotes" rows="3"></textarea></label>
       <menu>
         <button type="button" id="deleteEventBtn" class="danger hidden">Delete</button>
-        <button value="cancel">Cancel</button>
+        <button type="button" id="cancelEventBtn">Cancel</button>
         <button id="saveEventBtn" value="default" class="primary">Save</button>
       </menu>
     </form>

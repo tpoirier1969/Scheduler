@@ -7,7 +7,7 @@ const PEOPLE = {
 const PRESET_DEFAULT = { Class:0, Lesson:1, Rehearsal:2, Meeting:3, Performance:4, 'No-show':6, Event:2, Doctor:0, Hair:1, Church:6, Appointment:2, Camping:0, Roadtrip:3, Shopping:1, Friends:4, Family:2, Other:7 };
 const START_HOUR = 7;
 const END_HOUR = 22;
-let state = { weekStart: startOfWeek(new Date()), filter:'all', events:[], selectedColor:'#c8dff0', supabase:null, storageMode:'local' };
+let state = { weekStart: startOfWeek(new Date()), filter:'all', events:[], selectedColor:'#c8dff0', supabase:null, storageMode:'local', focusDate:null };
 
 const $ = id => document.getElementById(id);
 function startOfWeek(d){ const x=new Date(d); x.setHours(0,0,0,0); const day=x.getDay(); const diff=(day+6)%7; x.setDate(x.getDate()-diff); return x; }
@@ -17,10 +17,11 @@ function hmToMin(hm){ const [h,m]=hm.split(':').map(Number); return h*60+m; }
 function minToHm(min){ return `${String(Math.floor(min/60)).padStart(2,'0')}:${String(min%60).padStart(2,'0')}`; }
 function fmtDate(d){ return d.toLocaleDateString(undefined,{month:'short',day:'numeric'}); }
 function fmtDay(d){ return d.toLocaleDateString(undefined,{weekday:'short'}); }
+function fmtTime(hm){ const [h,m]=hm.split(':').map(Number); const suffix=h>=12?'pm':'am'; const hr=((h+11)%12)+1; return `${hr}:${String(m).padStart(2,'0')}${suffix}`; }
 function uuid(){ return crypto.randomUUID ? crypto.randomUUID() : 'id-'+Date.now()+'-'+Math.random().toString(16).slice(2); }
 
 async function init(){
-  document.body.classList.add('zoom-normal');
+  document.body.classList.add('zoom-compact');
   setupSupabase();
   setupControls();
   fillPersonSelect();
@@ -84,17 +85,18 @@ function setupControls(){
   $('nextWeekBtn').onclick=()=>{ state.weekStart=addDays(state.weekStart,7); render(); };
   $('todayBtn').onclick=()=>{ state.weekStart=startOfWeek(new Date()); render(); };
   $('weekPicker').onchange=e=>{ if(e.target.value){ state.weekStart=startOfWeek(new Date(e.target.value+'T00:00')); render(); } };
-  $('zoomSelect').onchange=e=>{ document.body.classList.remove('zoom-compact','zoom-normal','zoom-detailed'); document.body.classList.add('zoom-'+e.target.value); };
-  document.querySelectorAll('.filter').forEach(btn=>btn.onclick=()=>{ document.querySelectorAll('.filter').forEach(b=>b.classList.remove('active')); btn.classList.add('active'); state.filter=btn.dataset.filter; render(); });
+  $('zoomSelect').onchange=e=>{ document.body.classList.remove('zoom-compact','zoom-detailed'); document.body.classList.add('zoom-'+e.target.value); };
+  $('calendarSelect').onchange=e=>{ state.filter=e.target.value; state.focusDate=null; document.body.classList.remove('focus-day'); render(); };
   $('addEventBtn').onclick=()=>openDialog({date: isoDate(state.weekStart), start_time:'09:00', end_time:'09:30', person_key:'donna'});
   $('personSelect').onchange=()=>{ fillPresetSelect(); fillPalette(); };
   $('presetSelect').onchange=()=>{ const p=$('personSelect').value, preset=$('presetSelect').value; const idx=PRESET_DEFAULT[preset] ?? 0; state.selectedColor=PEOPLE[p].palette[idx]; fillPalette(); if(preset==='No-show') $('statusSelect').value='no_show'; };
   $('repeatToggle').onchange=e=>$('repeatControls').classList.toggle('hidden', !e.target.checked);
   $('saveEventBtn').onclick=async ev=>{ ev.preventDefault(); await submitForm(); };
   $('deleteEventBtn').onclick=async()=>{ const id=$('eventId').value; if(id){ await deleteEvent(id); $('eventDialog').close(); render(); } };
+  $('cancelEventBtn').onclick=()=>{$('eventDialog').close();};
 }
 function fillPersonSelect(){ $('personSelect').innerHTML=Object.entries(PEOPLE).map(([k,p])=>`<option value="${k}">${p.label}</option>`).join(''); fillPresetSelect(); fillPalette(); }
-function fillPresetSelect(){ const p=$('personSelect').value||'donna'; $('presetSelect').innerHTML=PEOPLE[p].presets.map(x=>`<option>${x}</option>`).join(''); }
+function fillPresetSelect(){ const p=$('personSelect').value||'donna'; $('presetSelect').innerHTML=PEOPLE[p].presets.map(x=>{ const c=PEOPLE[p].palette[PRESET_DEFAULT[x] ?? 0]; return `<option style="background:${c}">${x}</option>`; }).join(''); }
 function fillPalette(){ const p=$('personSelect').value||'donna'; $('colorPalette').innerHTML=''; PEOPLE[p].palette.forEach(c=>{ const b=document.createElement('button'); b.type='button'; b.className='color-swatch'+(c===state.selectedColor?' selected':''); b.style.background=c; b.title=c; b.onclick=()=>{ state.selectedColor=c; fillPalette(); }; $('colorPalette').appendChild(b); }); }
 
 function expandEventsForWeek(){
@@ -136,10 +138,12 @@ function hasGap(events, start, end, need){
 function renderGrid(events){
   const grid=$('calendarGrid'); grid.innerHTML=''; const today=isoDate(new Date());
   for(let i=0;i<7;i++){ const d=addDays(state.weekStart,i); const ds=isoDate(d); const col=document.createElement('section'); col.className='day-column'+(ds===today?' current-day':'');
-    col.innerHTML=`<div class="day-header"><div><strong>${fmtDay(d)}</strong><small>${fmtDate(d)}</small></div><button class="add-day">+</button></div><div class="day-timeline"><div class="half-lines"></div></div>`;
+    if(state.focusDate===ds) col.classList.add('focused');
+    col.innerHTML=`<div class="day-header" title="Double-click to zoom this day"><div><strong>${fmtDay(d)}</strong><small>${fmtDate(d)}</small></div><button class="add-day" aria-label="Add event">+</button></div><div class="day-timeline"><div class="half-lines"></div></div>`;
+    col.querySelector('.day-header').ondblclick=(ev)=>{ if(ev.target.closest('button')) return; state.focusDate = state.focusDate===ds ? null : ds; document.body.classList.toggle('focus-day', !!state.focusDate); render(); };
     col.querySelector('.add-day').onclick=()=>openDialog({date:ds,start_time:'09:00',end_time:'09:30',person_key:'donna'});
     const tl=col.querySelector('.day-timeline');
-    for(let h=START_HOUR; h<=END_HOUR; h++){ const lab=document.createElement('div'); lab.className='time-label'; lab.style.top=`${(h-START_HOUR)*100/ (END_HOUR-START_HOUR)}%`; lab.textContent=(h<=12?h:h-12)+':00'; tl.appendChild(lab); }
+    for(let h=START_HOUR; h<=END_HOUR; h++){ const lab=document.createElement('div'); lab.className='time-label'; lab.style.top=`${(h-START_HOUR)*100/ (END_HOUR-START_HOUR)}%`; lab.textContent=fmtTime(String(h).padStart(2,'0')+':00'); tl.appendChild(lab); }
     const dayEvents=events.filter(e=>e.date===ds).sort((a,b)=>hmToMin(a.start_time)-hmToMin(b.start_time)); assignOverlapLanes(dayEvents).forEach(e=>tl.appendChild(eventEl(e)));
     grid.appendChild(col);
   }
@@ -151,18 +155,18 @@ function eventEl(e){
   const div=document.createElement('article'); div.className='event-block '+(e.status==='no_show'?'no-show ':'')+(e.status==='cancelled'?'cancelled ':'')+(e.overlap?'overlap-2 lane-'+e.lane:'');
   const top=(hmToMin(e.start_time)-START_HOUR*60)/((END_HOUR-START_HOUR)*60)*100; const height=(hmToMin(e.end_time)-hmToMin(e.start_time))/((END_HOUR-START_HOUR)*60)*100;
   div.style.top=top+'%'; div.style.height=Math.max(height,2.8)+'%'; div.style.background=e.color||'#ddd';
-  div.innerHTML=`<div class="event-title">${escapeHtml(e.title)}</div><div class="event-time">${e.start_time}–${e.end_time}</div><div class="event-meta">${PEOPLE[e.person_key]?.label||e.person_key} · ${e.preset_name}</div>`;
+  div.innerHTML=`<div class="event-title">${escapeHtml(e.title)}</div><div class="event-time">${fmtTime(e.start_time)}–${fmtTime(e.end_time)}</div><div class="event-meta">${PEOPLE[e.person_key]?.label||e.person_key} · ${e.preset_name}</div>`;
   div.onclick=()=>openDialog(e);
   return div;
 }
 function renderPrint(events){
   const box=$('printList'); box.innerHTML='';
   for(let i=0;i<7;i++){ const d=addDays(state.weekStart,i); const ds=isoDate(d); const dayEvents=events.filter(e=>e.date===ds).sort((a,b)=>hmToMin(a.start_time)-hmToMin(b.start_time)); const wrap=document.createElement('div'); wrap.className='print-day';
-    wrap.innerHTML=`<h3>${fmtDay(d)} ${fmtDate(d)}</h3>` + (dayEvents.length?`<ul>${dayEvents.map(e=>`<li>${e.start_time}–${e.end_time} · ${escapeHtml(e.title)} · ${PEOPLE[e.person_key]?.label} · ${e.preset_name}${e.status==='no_show'?' · NO-SHOW':''}</li>`).join('')}</ul>`:'<p>No blocks.</p>'); box.appendChild(wrap);
+    wrap.innerHTML=`<h3>${fmtDay(d)} ${fmtDate(d)}</h3>` + (dayEvents.length?`<ul>${dayEvents.map(e=>`<li>${fmtTime(e.start_time)}–${fmtTime(e.end_time)} · ${escapeHtml(e.title)} · ${PEOPLE[e.person_key]?.label} · ${e.preset_name}${e.status==='no_show'?' · NO-SHOW':''}</li>`).join('')}</ul>`:'<p>No blocks.</p>'); box.appendChild(wrap);
   }
 }
 function openDialog(e){
-  $('dialogTitle').textContent=e.id?'Edit block':'Add block'; $('eventId').value=e.id||''; $('eventTitle').value=e.title||''; $('personSelect').value=e.person_key||'donna'; fillPresetSelect(); $('presetSelect').value=e.preset_name||PEOPLE[$('personSelect').value].presets[0];
+  $('dialogTitle').textContent=e.id?'Edit':'+ Add'; $('eventId').value=e.id||''; $('eventTitle').value=e.title||''; $('personSelect').value=e.person_key||'donna'; fillPresetSelect(); $('presetSelect').value=e.preset_name||PEOPLE[$('personSelect').value].presets[0];
   $('eventDate').value=e.date||isoDate(state.weekStart); $('startTime').value=e.start_time||'09:00'; $('endTime').value=e.end_time||'09:30'; $('statusSelect').value=e.status||'scheduled'; $('eventNotes').value=e.notes||''; state.selectedColor=e.color||PEOPLE[$('personSelect').value].palette[0]; fillPalette();
   $('repeatToggle').checked=!!e.recurrence_rule?.enabled; $('repeatControls').classList.toggle('hidden',!$('repeatToggle').checked); $('repeatFrequency').value=e.recurrence_rule?.frequency||'weekly'; $('repeatUntil').value=e.recurrence_rule?.until||''; document.querySelectorAll('.weekday-picker input').forEach(ch=>ch.checked=e.recurrence_rule?.days?.map(String).includes(ch.value)||false);
   $('deleteEventBtn').classList.toggle('hidden',!e.id || e.recurring_instance); $('eventDialog').showModal();
