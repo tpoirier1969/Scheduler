@@ -114,30 +114,91 @@ function setupSwipeNavigation(){
   if(!grid) return;
   let startX = 0;
   let startY = 0;
+  let dx = 0;
   let tracking = false;
+  let dragging = false;
   let startedOnInteractive = false;
-  const isTouchLayout = () => window.matchMedia('(pointer: coarse), (max-width: 1024px)').matches;
+  const isPhoneCarousel = () => window.matchMedia('(max-width: 760px) and (orientation: portrait)').matches && !document.body.classList.contains('focus-day');
   const isInteractiveTarget = target => !!target.closest('button, input, select, textarea, dialog, .event-block, .day-header, .add-day');
+  const columnStep = () => {
+    const first = grid.querySelector('.day-column');
+    if(!first) return Math.max(120, grid.clientWidth / 3);
+    const styles = getComputedStyle(grid);
+    const gap = Number.parseFloat(styles.columnGap || styles.gap || '0') || 0;
+    return first.getBoundingClientRect().width + gap;
+  };
+  const baseOffset = () => isPhoneCarousel() ? -(columnStep() * 3) : 0;
+  const setX = x => { grid.style.transform = `translate3d(${x}px,0,0)`; };
+  const reset = () => {
+    tracking = false;
+    dragging = false;
+    dx = 0;
+    grid.classList.remove('is-dragging','is-snapping');
+    resetCarouselPosition();
+  };
 
   grid.addEventListener('touchstart', ev => {
-    if(!isTouchLayout() || ev.touches.length !== 1) return;
+    if(!isPhoneCarousel() || ev.touches.length !== 1) return;
     tracking = true;
+    dragging = false;
+    dx = 0;
     startedOnInteractive = isInteractiveTarget(ev.target);
     startX = ev.touches[0].clientX;
     startY = ev.touches[0].clientY;
+    grid.classList.remove('is-snapping');
   }, { passive:true });
 
-  grid.addEventListener('touchend', ev => {
-    if(!tracking || startedOnInteractive || !isTouchLayout()) { tracking = false; return; }
-    const touch = ev.changedTouches[0];
-    const dx = touch.clientX - startX;
+  grid.addEventListener('touchmove', ev => {
+    if(!tracking || startedOnInteractive || !isPhoneCarousel() || ev.touches.length !== 1) return;
+    const touch = ev.touches[0];
+    dx = touch.clientX - startX;
     const dy = touch.clientY - startY;
-    tracking = false;
-    if(Math.abs(dx) < 55 || Math.abs(dx) < Math.abs(dy) * 1.35) return;
-    state.weekStart = addDays(state.weekStart, dx < 0 ? 1 : -1);
-    closeToolbarMenu();
-    render();
+    if(!dragging){
+      if(Math.abs(dx) < 8 && Math.abs(dy) < 8) return;
+      if(Math.abs(dx) < Math.abs(dy) * 1.15){ tracking = false; return; }
+      dragging = true;
+      grid.classList.add('is-dragging');
+    }
+    ev.preventDefault();
+    const resistance = Math.max(-columnStep() * 1.15, Math.min(columnStep() * 1.15, dx));
+    setX(baseOffset() + resistance);
+  }, { passive:false });
+
+  grid.addEventListener('touchend', () => {
+    if(!tracking || startedOnInteractive || !isPhoneCarousel()) { reset(); return; }
+    const step = columnStep();
+    const shouldPage = dragging && Math.abs(dx) >= Math.max(45, step * 0.28);
+    grid.classList.remove('is-dragging');
+    grid.classList.add('is-snapping');
+    if(!shouldPage){
+      setX(baseOffset());
+      setTimeout(reset, 230);
+      return;
+    }
+    const direction = dx < 0 ? 1 : -1;
+    setX(baseOffset() - direction * step);
+    setTimeout(() => {
+      state.weekStart = addDays(state.weekStart, direction);
+      closeToolbarMenu();
+      grid.classList.remove('is-snapping');
+      render();
+    }, 230);
   }, { passive:true });
+
+  grid.addEventListener('touchcancel', reset, { passive:true });
+}
+
+function resetCarouselPosition(){
+  const grid=$('calendarGrid');
+  if(!grid) return;
+  const phoneCarousel = window.matchMedia('(max-width: 760px) and (orientation: portrait)').matches && !document.body.classList.contains('focus-day');
+  if(!phoneCarousel){ grid.style.transform=''; return; }
+  const first=grid.querySelector('.day-column');
+  if(!first) return;
+  const styles=getComputedStyle(grid);
+  const gap=Number.parseFloat(styles.columnGap || styles.gap || '0') || 0;
+  const step=first.getBoundingClientRect().width + gap;
+  grid.style.transform=`translate3d(${-step*3}px,0,0)`;
 }
 
 function fillPersonSelect(){ $('personSelect').innerHTML=Object.entries(PEOPLE).map(([k,p])=>`<option value="${k}">${p.label}</option>`).join(''); fillPresetSelect(); fillPalette(); }
@@ -183,7 +244,12 @@ function hasGap(events, start, end, need){
 }
 function renderGrid(events){
   const grid=$('calendarGrid'); grid.innerHTML=''; const today=isoDate(new Date());
-  for(let i=0;i<7;i++){ const d=addDays(state.weekStart,i); const ds=isoDate(d); const col=document.createElement('section'); col.className='day-column'+(ds===today?' current-day':'');
+  grid.classList.remove('is-dragging','is-snapping');
+  const phoneCarousel = window.matchMedia('(max-width: 760px) and (orientation: portrait)').matches && !document.body.classList.contains('focus-day');
+  const startOffset = phoneCarousel ? -3 : 0;
+  const dayCount = phoneCarousel ? 9 : 7;
+  grid.classList.toggle('phone-carousel', phoneCarousel);
+  for(let i=startOffset;i<startOffset+dayCount;i++){ const d=addDays(state.weekStart,i); const ds=isoDate(d); const col=document.createElement('section'); col.className='day-column'+(ds===today?' current-day':'');
     if(state.focusDate===ds) col.classList.add('focused');
     col.innerHTML=`<div class="day-header" title="Double-click to zoom this day"><div><strong>${fmtDay(d)}</strong><small>${fmtDate(d)}</small></div><button class="add-day" aria-label="Add event">+</button></div><div class="day-timeline"><div class="half-lines"></div></div>`;
     col.querySelector('.day-header').ondblclick=(ev)=>{ if(ev.target.closest('button')) return; state.focusDate = state.focusDate===ds ? null : ds; document.body.classList.toggle('focus-day', !!state.focusDate); render(); };
@@ -193,6 +259,7 @@ function renderGrid(events){
     const dayEvents=events.filter(e=>e.date===ds).sort((a,b)=>hmToMin(a.start_time)-hmToMin(b.start_time)); assignOverlapLanes(dayEvents).forEach(e=>tl.appendChild(eventEl(e)));
     grid.appendChild(col);
   }
+  requestAnimationFrame(resetCarouselPosition);
 }
 function assignOverlapLanes(list){
   return list.map((e,idx)=>{ const overlap=list.some((o,j)=>j!==idx && hmToMin(o.start_time)<hmToMin(e.end_time) && hmToMin(e.start_time)<hmToMin(o.end_time)); const previous=list.filter((o,j)=>j<idx && hmToMin(o.start_time)<hmToMin(e.end_time) && hmToMin(e.start_time)<hmToMin(o.end_time)).length; return {...e, overlap, lane: overlap ? previous%2 : 0}; });

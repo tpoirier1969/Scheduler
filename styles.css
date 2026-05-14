@@ -357,3 +357,32 @@ body.focus-day .day-column.focused { display:block; min-width:calc(100vw - 1rem)
     margin-top: 1px !important;
   }
 }
+
+
+/* V1.6 mobile carousel: days track the finger during horizontal swipes */
+@media (max-width: 760px) and (orientation: portrait) {
+  .calendar-grid.phone-carousel {
+    --phone-day-width: calc((100vw - 0.76rem - 8px) / 3);
+    grid-template-columns: repeat(9, var(--phone-day-width)) !important;
+    grid-auto-flow: column !important;
+    overflow: hidden !important;
+    overscroll-behavior-x: contain !important;
+    gap: 4px !important;
+    transition: none !important;
+    will-change: transform;
+  }
+  .calendar-grid.phone-carousel.is-dragging {
+    transition: none !important;
+  }
+  .calendar-grid.phone-carousel.is-snapping {
+    transition: transform 220ms cubic-bezier(.2,.72,.18,1) !important;
+  }
+  .calendar-grid.phone-carousel .day-column {
+    min-width: var(--phone-day-width) !important;
+    width: var(--phone-day-width) !important;
+    display: block !important;
+  }
+  .calendar-grid.phone-carousel .day-column:nth-child(n) {
+    display: block !important;
+  }
+}
