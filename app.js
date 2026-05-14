@@ -7,7 +7,7 @@ const PEOPLE = {
 const PRESET_DEFAULT = { Class:0, Lesson:1, Rehearsal:2, Meeting:3, Performance:4, 'No-show':6, Event:2, Doctor:0, Hair:1, Church:6, Appointment:2, Camping:0, Roadtrip:3, Shopping:1, Friends:4, Family:2, Other:7 };
 const START_HOUR = 7;
 const END_HOUR = 22;
-let state = { weekStart: startOfWeek(new Date()), filter:'all', events:[], selectedColor:'#c8dff0', supabase:null, storageMode:'local', focusDate:null, detailsEvent:null };
+let state = { weekStart: startOfWeek(new Date()), filter:'all', events:[], selectedColor:'#c8dff0', supabase:null, storageMode:'local', focusDate:null, detailsEvent:null, pendingScrollDate:null, adjustingScroll:false };
 
 const $ = id => document.getElementById(id);
 function startOfWeek(d){ const x=new Date(d); x.setHours(0,0,0,0); const day=x.getDay(); const diff=(day+6)%7; x.setDate(x.getDate()-diff); return x; }
@@ -106,39 +106,86 @@ function setupControls(){
 function toggleToolbarMenu(){ const tb=document.querySelector('.toolbar'); const open=!tb.classList.contains('menu-open'); tb.classList.toggle('menu-open', open); $('navMenuBtn').setAttribute('aria-expanded', String(open)); }
 function closeToolbarMenu(){ const tb=document.querySelector('.toolbar'); if(tb){ tb.classList.remove('menu-open'); } if($('navMenuBtn')) $('navMenuBtn').setAttribute('aria-expanded','false'); }
 function weekRangeText(){ const days=visibleDayCount(); const start=state.weekStart; const end=addDays(start, days-1); return `${fmtDate(start)} – ${fmtDate(end)}`; }
-function visibleDayCount(){ return window.matchMedia('(max-width: 760px) and (orientation: portrait)').matches && !document.body.classList.contains('focus-day') ? 3 : 7; }
-
+function visibleDayCount(){
+  if(document.body.classList.contains('focus-day')) return 1;
+  if(window.matchMedia('(max-width: 760px) and (orientation: portrait)').matches) return 3;
+  if(window.matchMedia('(max-width: 900px) and (orientation: landscape)').matches) return 5;
+  return 7;
+}
+function isScrollableDayRail(){ return window.matchMedia('(max-width: 900px)').matches && !document.body.classList.contains('focus-day'); }
+function renderRange(){ return isScrollableDayRail() ? { start:addDays(state.weekStart,-21), days:49 } : { start:state.weekStart, days:7 }; }
 
 function setupSwipeNavigation(){
-  // V1.8: native horizontal scrolling/snap on phones. Keep touch handling browser-native so days visibly move with the finger.
+  // Native horizontal rail: days move with the finger. Edge-recenter makes it effectively unlimited.
   const grid = $('calendarGrid');
   if(!grid) return;
+  let edgeTimer=null;
   grid.addEventListener('wheel', ev => {
-    if(window.matchMedia('(max-width: 760px) and (orientation: portrait)').matches && Math.abs(ev.deltaY) > Math.abs(ev.deltaX)){
+    if(isScrollableDayRail() && Math.abs(ev.deltaY) > Math.abs(ev.deltaX)){
       grid.scrollLeft += ev.deltaY;
     }
   }, { passive:true });
-  grid.addEventListener('touchstart', () => {}, { passive:true });
+  grid.addEventListener('scroll', () => {
+    if(state.adjustingScroll || !isScrollableDayRail()) return;
+    clearTimeout(edgeTimer);
+    edgeTimer=setTimeout(checkRailEdges, 90);
+  }, { passive:true });
 }
 
 function resetCarouselPosition(){
   const grid=$('calendarGrid');
   if(!grid) return;
   grid.style.transform='';
+  if(!isScrollableDayRail()) return;
+  const target = state.pendingScrollDate || isoDate(state.weekStart);
+  state.pendingScrollDate=null;
+  scrollRailToDate(target);
+}
+function scrollRailToDate(dateStr){
+  const grid=$('calendarGrid');
+  if(!grid) return;
+  const col=[...grid.children].find(el=>el.dataset.date===dateStr) || grid.children[21] || grid.children[0];
+  if(!col) return;
+  state.adjustingScroll=true;
+  grid.scrollLeft = Math.max(0, col.offsetLeft - 6);
+  setTimeout(()=>{ state.adjustingScroll=false; }, 120);
+}
+function firstVisibleRailDate(){
+  const grid=$('calendarGrid');
+  if(!grid) return isoDate(state.weekStart);
+  const x=grid.scrollLeft + 8;
+  let best=null;
+  for(const col of grid.children){ if(col.offsetLeft + col.offsetWidth > x){ best=col; break; } }
+  return best?.dataset.date || isoDate(state.weekStart);
+}
+function checkRailEdges(){
+  const grid=$('calendarGrid');
+  if(!grid || !isScrollableDayRail()) return;
+  const max=grid.scrollWidth-grid.clientWidth;
+  if(max<=0) return;
+  if(grid.scrollLeft < grid.clientWidth*0.7){
+    state.pendingScrollDate=firstVisibleRailDate();
+    state.weekStart=addDays(state.weekStart,-14);
+    render();
+  } else if(grid.scrollLeft > max - grid.clientWidth*0.7){
+    state.pendingScrollDate=firstVisibleRailDate();
+    state.weekStart=addDays(state.weekStart,14);
+    render();
+  }
 }
 
 function fillPersonSelect(){ $('personSelect').innerHTML=Object.entries(PEOPLE).map(([k,p])=>`<option value="${k}">${p.label}</option>`).join(''); fillPresetSelect(); fillPalette(); }
 function fillPresetSelect(){ const p=$('personSelect').value||'donna'; $('presetSelect').innerHTML=PEOPLE[p].presets.map(x=>{ const c=PEOPLE[p].palette[PRESET_DEFAULT[x] ?? 0]; return `<option style="background:${c}">${x}</option>`; }).join(''); }
 function fillPalette(){ const p=$('personSelect').value||'donna'; $('colorPalette').innerHTML=''; PEOPLE[p].palette.forEach(c=>{ const b=document.createElement('button'); b.type='button'; b.className='color-swatch'+(c===state.selectedColor?' selected':''); b.style.background=c; b.title=c; b.onclick=()=>{ state.selectedColor=c; fillPalette(); }; $('colorPalette').appendChild(b); }); }
 
-function expandEventsForWeek(){
-  const start=isoDate(state.weekStart), end=isoDate(addDays(state.weekStart,7));
+function expandEventsForRange(rangeStart, rangeDays){
+  const start=isoDate(rangeStart), end=isoDate(addDays(rangeStart,rangeDays));
   let out=[];
   for(const e of state.events){
     if(e.date>=start && e.date<end) out.push(e);
     if(e.recurrence_rule?.enabled){
       const base=new Date(e.date+'T00:00'); const until=e.recurrence_rule.until ? new Date(e.recurrence_rule.until+'T00:00') : addDays(base,365);
-      for(let i=0;i<7;i++){ const d=addDays(state.weekStart,i); const ds=isoDate(d); if(ds<=e.date || d>until) continue;
+      for(let i=0;i<rangeDays;i++){ const d=addDays(rangeStart,i); const ds=isoDate(d); if(ds<=e.date || d>until) continue;
         const dow=d.getDay();
         const days=e.recurrence_rule.days?.length ? e.recurrence_rule.days.map(Number) : [base.getDay()];
         if(days.includes(dow)) out.push({...e, id:e.id+'__'+ds, date:ds, recurring_instance:true});
@@ -151,7 +198,8 @@ function expandEventsForWeek(){
 function render(){
   $('weekPicker').value=isoDate(state.weekStart);
   $('weekRangeBtn').textContent=weekRangeText();
-  const events=expandEventsForWeek();
+  const range=renderRange();
+  const events=expandEventsForRange(range.start, range.days);
   renderDensity(events); renderGrid(events); renderPrint(events);
 }
 function renderDensity(events){
@@ -171,11 +219,10 @@ function hasGap(events, start, end, need){
 function renderGrid(events){
   const grid=$('calendarGrid'); grid.innerHTML=''; const today=isoDate(new Date());
   grid.classList.remove('is-dragging','is-snapping');
-  const phoneCarousel = window.matchMedia('(max-width: 760px) and (orientation: portrait)').matches && !document.body.classList.contains('focus-day');
-  const startOffset = 0;
-  const dayCount = 7;
+  const phoneCarousel = isScrollableDayRail();
+  const range=renderRange();
   grid.classList.toggle('phone-carousel', phoneCarousel);
-  for(let i=startOffset;i<startOffset+dayCount;i++){ const d=addDays(state.weekStart,i); const ds=isoDate(d); const col=document.createElement('section'); col.className='day-column'+(ds===today?' current-day':'');
+  for(let i=0;i<range.days;i++){ const d=addDays(range.start,i); const ds=isoDate(d); const col=document.createElement('section'); col.className='day-column'+(ds===today?' current-day':''); col.dataset.date=ds;
     if(state.focusDate===ds) col.classList.add('focused');
     col.innerHTML=`<div class="day-header" title="Double-click to zoom this day"><div><strong>${fmtDay(d)}</strong><small>${fmtDate(d)}</small></div><button class="add-day" aria-label="Add event">+</button></div><div class="day-timeline"><div class="half-lines"></div></div>`;
     col.querySelector('.day-header').ondblclick=(ev)=>{ if(ev.target.closest('button')) return; state.focusDate = state.focusDate===ds ? null : ds; document.body.classList.toggle('focus-day', !!state.focusDate); render(); };

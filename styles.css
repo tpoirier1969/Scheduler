@@ -449,3 +449,37 @@ body.focus-day .day-column.focused { display:block; min-width:calc(100vw - 1rem)
     scroll-snap-align: start !important;
   }
 }
+
+
+/* V1.9 phone landscape = 5 days; mobile rail can keep swiping beyond the initial week */
+@media (max-width: 900px) and (orientation: landscape) {
+  .calendar-grid.phone-carousel {
+    --phone-day-width: calc((100vw - 32px) / 5) !important;
+    display: flex !important;
+    flex-wrap: nowrap !important;
+    grid-template-columns: none !important;
+    width: 100vw !important;
+    max-width: 100vw !important;
+    box-sizing: border-box !important;
+    overflow-x: scroll !important;
+    overflow-y: visible !important;
+    touch-action: pan-x pan-y !important;
+    -webkit-overflow-scrolling: touch !important;
+    scroll-snap-type: x proximity !important;
+    scroll-behavior: smooth !important;
+    gap: 4px !important;
+    padding-left: 6px !important;
+    padding-right: 6px !important;
+  }
+  .calendar-grid.phone-carousel .day-column {
+    display: block !important;
+    flex: 0 0 var(--phone-day-width) !important;
+    min-width: var(--phone-day-width) !important;
+    width: var(--phone-day-width) !important;
+    max-width: var(--phone-day-width) !important;
+    scroll-snap-align: start !important;
+  }
+}
+@media (max-width: 900px) {
+  .calendar-grid.phone-carousel .day-column:nth-child(n) { display:block !important; }
+}
