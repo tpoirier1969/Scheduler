@@ -7,7 +7,7 @@ const PEOPLE = {
 const PRESET_DEFAULT = { Class:0, Lesson:1, Rehearsal:2, Meeting:3, Performance:4, 'No-show':6, Event:2, Doctor:0, Hair:1, Church:6, Appointment:2, Camping:0, Roadtrip:3, Shopping:1, Friends:4, Family:2, Other:7 };
 const START_HOUR = 7;
 const END_HOUR = 22;
-let state = { weekStart: startOfWeek(new Date()), filter:'all', events:[], selectedColor:'#c8dff0', supabase:null, storageMode:'local', focusDate:null };
+let state = { weekStart: startOfWeek(new Date()), filter:'all', events:[], selectedColor:'#c8dff0', supabase:null, storageMode:'local', focusDate:null, detailsEvent:null };
 
 const $ = id => document.getElementById(id);
 function startOfWeek(d){ const x=new Date(d); x.setHours(0,0,0,0); const day=x.getDay(); const diff=(day+6)%7; x.setDate(x.getDate()-diff); return x; }
@@ -81,12 +81,15 @@ async function deleteEvent(id){
 async function saveAllLocal(){ localStorage.setItem('tod_donna_calendar_events_v1', JSON.stringify(state.events)); }
 
 function setupControls(){
-  $('prevWeekBtn').onclick=()=>{ state.weekStart=addDays(state.weekStart,-7); render(); };
-  $('nextWeekBtn').onclick=()=>{ state.weekStart=addDays(state.weekStart,7); render(); };
-  $('todayBtn').onclick=()=>{ state.weekStart=startOfWeek(new Date()); render(); };
-  $('weekPicker').onchange=e=>{ if(e.target.value){ state.weekStart=startOfWeek(new Date(e.target.value+'T00:00')); render(); } };
+  $('prevWeekBtn').onclick=()=>{ state.weekStart=addDays(state.weekStart,-7); closeToolbarMenu(); render(); };
+  $('nextWeekBtn').onclick=()=>{ state.weekStart=addDays(state.weekStart,7); closeToolbarMenu(); render(); };
+  $('todayBtn').onclick=()=>{ state.weekStart=startOfWeek(new Date()); closeToolbarMenu(); render(); };
+  $('menuTodayBtn').onclick=()=>{ state.weekStart=startOfWeek(new Date()); closeToolbarMenu(); render(); };
+  $('weekRangeBtn').onclick=()=>toggleToolbarMenu();
+  $('navMenuBtn').onclick=()=>toggleToolbarMenu();
+  $('weekPicker').onchange=e=>{ if(e.target.value){ state.weekStart=startOfWeek(new Date(e.target.value+'T00:00')); closeToolbarMenu(); render(); } };
   $('zoomSelect').onchange=e=>{ document.body.classList.remove('zoom-compact','zoom-detailed'); document.body.classList.add('zoom-'+e.target.value); };
-  $('calendarSelect').onchange=e=>{ state.filter=e.target.value; state.focusDate=null; document.body.classList.remove('focus-day'); render(); };
+  $('calendarSelect').onchange=e=>{ state.filter=e.target.value; state.focusDate=null; document.body.classList.remove('focus-day'); closeToolbarMenu(); render(); };
   $('addEventBtn').onclick=()=>openDialog({date: isoDate(state.weekStart), start_time:'09:00', end_time:'09:30', person_key:'donna'});
   $('personSelect').onchange=()=>{ fillPresetSelect(); fillPalette(); };
   $('presetSelect').onchange=()=>{ const p=$('personSelect').value, preset=$('presetSelect').value; const idx=PRESET_DEFAULT[preset] ?? 0; state.selectedColor=PEOPLE[p].palette[idx]; fillPalette(); if(preset==='No-show') $('statusSelect').value='no_show'; };
@@ -94,7 +97,16 @@ function setupControls(){
   $('saveEventBtn').onclick=async ev=>{ ev.preventDefault(); await submitForm(); };
   $('deleteEventBtn').onclick=async()=>{ const id=$('eventId').value; if(id){ await deleteEvent(id); $('eventDialog').close(); render(); } };
   $('cancelEventBtn').onclick=()=>{$('eventDialog').close();};
+  $('closeDetailsBtn').onclick=()=>$('eventDetailsDialog').close();
+  $('editDetailsBtn').onclick=()=>{ const e=state.detailsEvent; $('eventDetailsDialog').close(); if(e) openDialog(e); };
+  $('deleteDetailsBtn').onclick=async()=>{ const e=state.detailsEvent; if(e?.id && !e.recurring_instance){ await deleteEvent(e.id); $('eventDetailsDialog').close(); render(); } };
+  document.addEventListener('click', ev=>{ if(!ev.target.closest('.toolbar')) closeToolbarMenu(); });
 }
+function toggleToolbarMenu(){ const tb=document.querySelector('.toolbar'); const open=!tb.classList.contains('menu-open'); tb.classList.toggle('menu-open', open); $('navMenuBtn').setAttribute('aria-expanded', String(open)); }
+function closeToolbarMenu(){ const tb=document.querySelector('.toolbar'); if(tb){ tb.classList.remove('menu-open'); } if($('navMenuBtn')) $('navMenuBtn').setAttribute('aria-expanded','false'); }
+function weekRangeText(){ const days=visibleDayCount(); const start=state.weekStart; const end=addDays(start, days-1); return `${fmtDate(start)} – ${fmtDate(end)}`; }
+function visibleDayCount(){ return window.matchMedia('(max-width: 760px) and (orientation: portrait)').matches && !document.body.classList.contains('focus-day') ? 3 : 7; }
+
 function fillPersonSelect(){ $('personSelect').innerHTML=Object.entries(PEOPLE).map(([k,p])=>`<option value="${k}">${p.label}</option>`).join(''); fillPresetSelect(); fillPalette(); }
 function fillPresetSelect(){ const p=$('personSelect').value||'donna'; $('presetSelect').innerHTML=PEOPLE[p].presets.map(x=>{ const c=PEOPLE[p].palette[PRESET_DEFAULT[x] ?? 0]; return `<option style="background:${c}">${x}</option>`; }).join(''); }
 function fillPalette(){ const p=$('personSelect').value||'donna'; $('colorPalette').innerHTML=''; PEOPLE[p].palette.forEach(c=>{ const b=document.createElement('button'); b.type='button'; b.className='color-swatch'+(c===state.selectedColor?' selected':''); b.style.background=c; b.title=c; b.onclick=()=>{ state.selectedColor=c; fillPalette(); }; $('colorPalette').appendChild(b); }); }
@@ -118,6 +130,7 @@ function expandEventsForWeek(){
 }
 function render(){
   $('weekPicker').value=isoDate(state.weekStart);
+  $('weekRangeBtn').textContent=weekRangeText();
   const events=expandEventsForWeek();
   renderDensity(events); renderGrid(events); renderPrint(events);
 }
@@ -143,7 +156,7 @@ function renderGrid(events){
     col.querySelector('.day-header').ondblclick=(ev)=>{ if(ev.target.closest('button')) return; state.focusDate = state.focusDate===ds ? null : ds; document.body.classList.toggle('focus-day', !!state.focusDate); render(); };
     col.querySelector('.add-day').onclick=()=>openDialog({date:ds,start_time:'09:00',end_time:'09:30',person_key:'donna'});
     const tl=col.querySelector('.day-timeline');
-    for(let h=START_HOUR; h<=END_HOUR; h++){ const lab=document.createElement('div'); lab.className='time-label'; lab.style.top=`${(h-START_HOUR)*100/ (END_HOUR-START_HOUR)}%`; lab.textContent=fmtTime(String(h).padStart(2,'0')+':00'); tl.appendChild(lab); }
+    for(let h=START_HOUR; h<=END_HOUR; h++){ const lab=document.createElement('div'); lab.className='time-label'+(h===START_HOUR?' start-label':''); lab.style.top=`calc(${h-START_HOUR} * var(--hour-height))`; lab.textContent=fmtTime(String(h).padStart(2,'0')+':00'); tl.appendChild(lab); }
     const dayEvents=events.filter(e=>e.date===ds).sort((a,b)=>hmToMin(a.start_time)-hmToMin(b.start_time)); assignOverlapLanes(dayEvents).forEach(e=>tl.appendChild(eventEl(e)));
     grid.appendChild(col);
   }
@@ -154,9 +167,10 @@ function assignOverlapLanes(list){
 function eventEl(e){
   const div=document.createElement('article'); div.className='event-block '+(e.status==='no_show'?'no-show ':'')+(e.status==='cancelled'?'cancelled ':'')+(e.overlap?'overlap-2 lane-'+e.lane:'');
   const top=(hmToMin(e.start_time)-START_HOUR*60)/((END_HOUR-START_HOUR)*60)*100; const height=(hmToMin(e.end_time)-hmToMin(e.start_time))/((END_HOUR-START_HOUR)*60)*100;
-  div.style.top=top+'%'; div.style.height=Math.max(height,2.8)+'%'; div.style.background=e.color||'#ddd';
-  div.innerHTML=`<div class="event-title">${escapeHtml(e.title)}</div><div class="event-time">${fmtTime(e.start_time)}–${fmtTime(e.end_time)}</div><div class="event-meta">${PEOPLE[e.person_key]?.label||e.person_key} · ${e.preset_name}</div>`;
-  div.onclick=()=>openDialog(e);
+  div.style.top=top+'%'; div.style.height=height+'%'; div.style.background=e.color||'#ddd';
+  const meta = e.notes ? e.notes : `${PEOPLE[e.person_key]?.label||e.person_key} · ${e.preset_name}`;
+  div.innerHTML=`<div><div class="event-title">${escapeHtml(e.title)}</div><div class="event-meta">${escapeHtml(meta)}</div></div>`;
+  div.onclick=(ev)=>{ ev.stopPropagation(); openDetails(e); };
   return div;
 }
 function renderPrint(events){
@@ -164,6 +178,24 @@ function renderPrint(events){
   for(let i=0;i<7;i++){ const d=addDays(state.weekStart,i); const ds=isoDate(d); const dayEvents=events.filter(e=>e.date===ds).sort((a,b)=>hmToMin(a.start_time)-hmToMin(b.start_time)); const wrap=document.createElement('div'); wrap.className='print-day';
     wrap.innerHTML=`<h3>${fmtDay(d)} ${fmtDate(d)}</h3>` + (dayEvents.length?`<ul>${dayEvents.map(e=>`<li>${fmtTime(e.start_time)}–${fmtTime(e.end_time)} · ${escapeHtml(e.title)} · ${PEOPLE[e.person_key]?.label} · ${e.preset_name}${e.status==='no_show'?' · NO-SHOW':''}</li>`).join('')}</ul>`:'<p>No blocks.</p>'); box.appendChild(wrap);
   }
+}
+
+function openDetails(e){
+  state.detailsEvent=e;
+  const person=PEOPLE[e.person_key]?.label||e.person_key;
+  const status=e.status==='no_show'?'No-show':(e.status==='cancelled'?'Cancelled':'Scheduled');
+  const recurrence=e.recurrence_rule?.enabled ? `${e.recurrence_rule.frequency || 'Recurring'}${e.recurrence_rule.until ? ' until '+e.recurrence_rule.until : ''}` : 'None';
+  $('deleteDetailsBtn').classList.toggle('hidden', !!e.recurring_instance);
+  $('eventDetailsContent').innerHTML=`
+    <div class="detail-main-title"><span class="detail-dot" style="background:${escapeHtml(e.color||'#ddd')}"></span>${escapeHtml(e.title)}</div>
+    <div class="detail-row"><span class="detail-label">Person</span><span>${escapeHtml(person)}</span></div>
+    <div class="detail-row"><span class="detail-label">Preset</span><span><span class="detail-chip" style="background:${escapeHtml(e.color||'#ddd')}">${escapeHtml(e.preset_name||'')}</span></span></div>
+    <div class="detail-row"><span class="detail-label">Date</span><span>${escapeHtml(e.date)}</span></div>
+    <div class="detail-row"><span class="detail-label">Time</span><span>${fmtTime(e.start_time)}–${fmtTime(e.end_time)}</span></div>
+    <div class="detail-row"><span class="detail-label">Status</span><span>${escapeHtml(status)}</span></div>
+    <div class="detail-row"><span class="detail-label">Repeat</span><span>${escapeHtml(recurrence)}</span></div>
+    <div class="detail-row"><span class="detail-label">Notes</span><span>${escapeHtml(e.notes||'')}</span></div>`;
+  $('eventDetailsDialog').showModal();
 }
 function openDialog(e){
   $('dialogTitle').textContent=e.id?'Edit':'+ Add'; $('eventId').value=e.id||''; $('eventTitle').value=e.title||''; $('personSelect').value=e.person_key||'donna'; fillPresetSelect(); $('presetSelect').value=e.preset_name||PEOPLE[$('personSelect').value].presets[0];
