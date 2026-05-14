@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Tod + Donna Calendar</title>
+  <link rel="stylesheet" href="styles.css" />
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="config.js"></script>
+</head>
+<body>
+  <header class="app-header">
+    <div>
+      <h1>Tod + Donna Calendar</h1>
+      <p class="version">V1.0 · shared weekly planner</p>
+    </div>
+    <button id="addEventBtn" class="primary">+ Add block</button>
+  </header>
+
+  <nav class="toolbar" aria-label="Calendar controls">
+    <button id="prevWeekBtn">‹ Previous</button>
+    <button id="todayBtn">Today</button>
+    <button id="nextWeekBtn">Next ›</button>
+    <label class="jump-label">Jump to week <input id="weekPicker" type="date" /></label>
+    <select id="zoomSelect" aria-label="Zoom level">
+      <option value="compact">Compact</option>
+      <option value="normal" selected>Normal</option>
+      <option value="detailed">Detailed</option>
+    </select>
+  </nav>
+
+  <section class="filterbar" aria-label="Person filters">
+    <button data-filter="all" class="filter active">All</button>
+    <button data-filter="donna" class="filter">Donna</button>
+    <button data-filter="tod" class="filter">Tod</button>
+    <button data-filter="frank" class="filter">Frank</button>
+    <button data-filter="shared" class="filter">Shared</button>
+  </section>
+
+  <section id="densityPanel" class="density-panel" aria-live="polite"></section>
+
+  <main>
+    <div id="calendarGrid" class="calendar-grid" aria-label="Weekly calendar"></div>
+    <section class="print-overview">
+      <h2>Weekly overview</h2>
+      <div id="printList"></div>
+    </section>
+  </main>
+
+  <dialog id="eventDialog">
+    <form method="dialog" id="eventForm" class="event-form">
+      <h2 id="dialogTitle">Add block</h2>
+      <input type="hidden" id="eventId" />
+      <label>Title <input id="eventTitle" required /></label>
+      <div class="form-row">
+        <label>Person
+          <select id="personSelect"></select>
+        </label>
+        <label>Preset
+          <select id="presetSelect"></select>
+        </label>
+      </div>
+      <div class="form-row">
+        <label>Date <input id="eventDate" type="date" required /></label>
+        <label>Start <input id="startTime" type="time" step="1800" required /></label>
+        <label>End <input id="endTime" type="time" step="1800" required /></label>
+      </div>
+      <label>Color</label>
+      <div id="colorPalette" class="color-palette"></div>
+      <label>Status
+        <select id="statusSelect">
+          <option value="scheduled">Scheduled</option>
+          <option value="no_show">No-show</option>
+          <option value="cancelled">Cancelled</option>
+        </select>
+      </label>
+      <fieldset>
+        <legend>Repeat</legend>
+        <label><input id="repeatToggle" type="checkbox" /> Recurring block</label>
+        <div id="repeatControls" class="repeat-controls hidden">
+          <label>Frequency
+            <select id="repeatFrequency">
+              <option value="weekly">Weekly</option>
+              <option value="daily">Daily</option>
+            </select>
+          </label>
+          <label>Until <input id="repeatUntil" type="date" /></label>
+          <div class="weekday-picker">
+            <label><input type="checkbox" value="1" /> Mon</label>
+            <label><input type="checkbox" value="2" /> Tue</label>
+            <label><input type="checkbox" value="3" /> Wed</label>
+            <label><input type="checkbox" value="4" /> Thu</label>
+            <label><input type="checkbox" value="5" /> Fri</label>
+            <label><input type="checkbox" value="6" /> Sat</label>
+            <label><input type="checkbox" value="0" /> Sun</label>
+          </div>
+        </div>
+      </fieldset>
+      <label>Notes <textarea id="eventNotes" rows="3"></textarea></label>
+      <menu>
+        <button type="button" id="deleteEventBtn" class="danger hidden">Delete</button>
+        <button value="cancel">Cancel</button>
+        <button id="saveEventBtn" value="default" class="primary">Save</button>
+      </menu>
+    </form>
+  </dialog>
+
+  <script src="seed-events.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
