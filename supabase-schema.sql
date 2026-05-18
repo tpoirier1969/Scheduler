@@ -112,32 +112,45 @@ create policy tod_donna_calendar_event_exceptions_all on public.tod_donna_calend
 drop policy if exists tod_donna_calendar_import_log_all on public.tod_donna_calendar_import_log;
 create policy tod_donna_calendar_import_log_all on public.tod_donna_calendar_import_log for all using (true) with check (true);
 
--- V1.18: semester-based Donna student quick-add list
-create table if not exists public.tod_donna_calendar_student_quick_adds (
+-- V1.21: active Donna student quick-add list
+-- Project-scoped table name avoids collisions with other Supabase projects.
+create table if not exists public.tod_donna_calendar_active_students (
   id uuid primary key default gen_random_uuid(),
-  semester_name text not null,
+  student_group text not null default 'Active Students',
   student_name text not null,
   sort_order integer not null default 0,
   is_active boolean not null default true,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
-  unique (semester_name, student_name)
+  unique (student_group, student_name)
 );
 
-create index if not exists tod_donna_calendar_student_quick_adds_semester_idx
-  on public.tod_donna_calendar_student_quick_adds (semester_name, is_active, sort_order, student_name);
+-- If the earlier V1.18 semester table exists, copy its active names forward once.
+do $$
+begin
+  if to_regclass('public.tod_donna_calendar_student_quick_adds') is not null then
+    insert into public.tod_donna_calendar_active_students (student_group, student_name, sort_order, is_active)
+    select coalesce(nullif(semester_name,''),'Active Students'), student_name, sort_order, is_active
+    from public.tod_donna_calendar_student_quick_adds
+    where is_active = true
+    on conflict (student_group, student_name) do update
+      set sort_order = excluded.sort_order, is_active = excluded.is_active;
+  end if;
+end $$;
 
-alter table public.tod_donna_calendar_student_quick_adds enable row level security;
+create index if not exists tod_donna_calendar_active_students_idx
+  on public.tod_donna_calendar_active_students (is_active, sort_order, student_name);
 
-drop policy if exists "tod_donna_calendar_student_quick_adds_all" on public.tod_donna_calendar_student_quick_adds;
-create policy "tod_donna_calendar_student_quick_adds_all"
-  on public.tod_donna_calendar_student_quick_adds
+alter table public.tod_donna_calendar_active_students enable row level security;
+
+drop policy if exists tod_donna_calendar_active_students_all on public.tod_donna_calendar_active_students;
+create policy tod_donna_calendar_active_students_all
+  on public.tod_donna_calendar_active_students
   for all
   using (true)
   with check (true);
 
-
-drop trigger if exists tod_donna_calendar_student_quick_adds_touch_updated_at on public.tod_donna_calendar_student_quick_adds;
-create trigger tod_donna_calendar_student_quick_adds_touch_updated_at
-before update on public.tod_donna_calendar_student_quick_adds
+drop trigger if exists tod_donna_calendar_active_students_touch_updated_at on public.tod_donna_calendar_active_students;
+create trigger tod_donna_calendar_active_students_touch_updated_at
+before update on public.tod_donna_calendar_active_students
 for each row execute function public.tod_donna_calendar_touch_updated_at();

@@ -7,7 +7,7 @@ const PEOPLE = {
 const PRESET_DEFAULT = { Class:0, Lesson:1, Rehearsal:2, Meeting:3, Performance:4, 'No-show':6, Event:2, Doctor:0, Hair:1, Church:6, Appointment:2, Camping:0, Roadtrip:3, Shopping:1, Friends:4, Family:2, Other:7 };
 const START_HOUR = 7;
 const END_HOUR = 22;
-let state = { weekStart: startOfWeek(new Date()), filter:'all', events:[], studentList:{ semester: defaultSemesterName(), names:[] }, selectedColor:'#c8dff0', supabase:null, storageMode:'local', focusDate:null, detailsEvent:null, pendingScrollDate:isoDate(new Date()), adjustingScroll:false, viewMode:'week' };
+let state = { weekStart: startOfWeek(new Date()), filter:'all', events:[], studentList:{ group: defaultStudentGroupName(), names:[] }, selectedColor:'#c8dff0', supabase:null, storageMode:'local', focusDate:null, detailsEvent:null, pendingScrollDate:isoDate(new Date()), adjustingScroll:false, viewMode:'week' };
 
 const $ = id => document.getElementById(id);
 function startOfWeek(d){ const x=new Date(d); x.setHours(0,0,0,0); const day=x.getDay(); const diff=(day+6)%7; x.setDate(x.getDate()-diff); return x; }
@@ -19,7 +19,7 @@ function fmtDate(d){ return d.toLocaleDateString(undefined,{month:'short',day:'n
 function fmtDay(d){ return d.toLocaleDateString(undefined,{weekday:'short'}); }
 function fmtTime(hm){ const [h,m]=hm.split(':').map(Number); const suffix=h>=12?'pm':'am'; const hr=((h+11)%12)+1; return `${hr}:${String(m).padStart(2,'0')}${suffix}`; }
 function uuid(){ return crypto.randomUUID ? crypto.randomUUID() : 'id-'+Date.now()+'-'+Math.random().toString(16).slice(2); }
-function defaultSemesterName(){ const d=new Date(); const y=d.getFullYear(); const m=d.getMonth()+1; if(m>=8) return `Fall ${y}`; if(m>=5) return `Summer ${y}`; return `Spring ${y}`; }
+function defaultStudentGroupName(){ return 'Active Students'; }
 
 async function init(){
   document.body.classList.add('zoom-compact');
@@ -69,10 +69,10 @@ async function loadEvents(){
 
 async function loadStudentList(){
   const fallback = () => {
-    const saved = localStorage.getItem('tod_donna_calendar_student_list_v1');
+    const saved = localStorage.getItem('tod_donna_calendar_active_students_v1') || localStorage.getItem('tod_donna_calendar_student_list_v1');
     if(saved){
-      try { state.studentList = JSON.parse(saved); }
-      catch { state.studentList = { semester: defaultSemesterName(), names: [] }; }
+      try { state.studentList = JSON.parse(saved); if(state.studentList.semester && !state.studentList.group) state.studentList.group = state.studentList.semester; }
+      catch { state.studentList = { group: defaultStudentGroupName(), names: [] }; }
     } else {
       state.studentList = buildStudentListFromEvents(seedEvents());
       saveStudentListLocal();
@@ -81,20 +81,20 @@ async function loadStudentList(){
   };
   if(state.storageMode==='supabase'){
     const { data, error } = await state.supabase
-      .from('tod_donna_calendar_student_quick_adds')
+      .from('tod_donna_calendar_active_students')
       .select('*')
       .eq('is_active', true)
       .order('sort_order');
     if(!error && data?.length){
       state.studentList = {
-        semester: data[0].semester_name || defaultSemesterName(),
+        group: data[0].student_group || defaultStudentGroupName(),
         names: data.map(r => r.student_name).filter(Boolean)
       };
       saveStudentListLocal();
       fillStudentQuickAddSelect();
       return;
     }
-    if(error) console.warn('Student quick-add table unavailable; using local list.', error.message || error);
+    if(error) console.warn('Active students table unavailable; using local list.', error.message || error);
   }
   fallback();
 }
@@ -105,11 +105,11 @@ function buildStudentListFromEvents(events){
     .map(e => String(e.title || '').replace(/^No\s+/i,'').trim())
     .filter(x => x && !excluded.has(x.toLowerCase())))]
     .sort((a,b)=>a.localeCompare(b));
-  return { semester: defaultSemesterName(), names };
+  return { group: defaultStudentGroupName(), names };
 }
-function saveStudentListLocal(){ localStorage.setItem('tod_donna_calendar_student_list_v1', JSON.stringify(state.studentList)); }
+function saveStudentListLocal(){ localStorage.setItem('tod_donna_calendar_active_students_v1', JSON.stringify(state.studentList)); }
 async function saveStudentList(){
-  state.studentList.semester = ($('semesterNameInput')?.value || defaultSemesterName()).trim() || defaultSemesterName();
+  state.studentList.group = ($('semesterNameInput')?.value || defaultStudentGroupName()).trim() || defaultStudentGroupName();
   state.studentList.names = ($('studentNamesInput')?.value || '')
     .split(/\r?\n/)
     .map(x=>x.trim())
@@ -118,14 +118,14 @@ async function saveStudentList(){
     .sort((a,b)=>a.localeCompare(b));
   saveStudentListLocal();
   if(state.storageMode==='supabase'){
-    const semester = state.studentList.semester;
-    await state.supabase.from('tod_donna_calendar_student_quick_adds').update({ is_active:false }).eq('is_active', true);
-    await state.supabase.from('tod_donna_calendar_student_quick_adds').delete().eq('semester_name', semester);
+    const group = state.studentList.group;
+    await state.supabase.from('tod_donna_calendar_active_students').update({ is_active:false }).eq('is_active', true);
+    await state.supabase.from('tod_donna_calendar_active_students').delete().eq('student_group', group);
     if(state.studentList.names.length){
       const rows = state.studentList.names.map((name,idx)=>({
-        id: uuid(), semester_name: semester, student_name: name, sort_order: idx, is_active: true
+        id: uuid(), student_group: group, student_name: name, sort_order: idx, is_active: true
       }));
-      await state.supabase.from('tod_donna_calendar_student_quick_adds').upsert(rows);
+      await state.supabase.from('tod_donna_calendar_active_students').upsert(rows);
     }
   }
   fillStudentQuickAddSelect();
@@ -133,7 +133,7 @@ async function saveStudentList(){
 function fillStudentQuickAddSelect(){
   const sel = $('studentQuickAddSelect');
   if(!sel) return;
-  const label = state.studentList?.semester ? `Choose student… (${state.studentList.semester})` : 'Choose student…';
+  const label = state.studentList?.group ? `Choose student… (${state.studentList.group})` : 'Choose student…';
   sel.innerHTML = `<option value="">${escapeHtml(label)}</option>` + (state.studentList.names || []).map(n=>`<option value="${escapeHtml(n)}">${escapeHtml(n)}</option>`).join('');
 }
 
@@ -182,11 +182,13 @@ function setupControls(){
   $('personSelect').onchange=()=>{ fillPresetSelect(); fillPalette(); updateQuickAddVisibility(); };
   $('presetSelect').onchange=()=>{ const p=$('personSelect').value, preset=$('presetSelect').value; const idx=PRESET_DEFAULT[preset] ?? 0; state.selectedColor=PEOPLE[p].palette[idx]; fillPalette(); if(preset==='No-show') $('statusSelect').value='no_show'; updateQuickAddVisibility(); };
   $('repeatToggle').onchange=e=>$('repeatControls').classList.toggle('hidden', !e.target.checked);
+  ['eventTitle','eventDate','startTime','endTime','personSelect'].forEach(id=>{ const el=$(id); if(el) el.addEventListener('input', updateDuplicateWarning); if(el) el.addEventListener('change', updateDuplicateWarning); });
   $('saveEventBtn').onclick=async ev=>{ ev.preventDefault(); await submitForm(); };
   $('deleteEventBtn').onclick=async()=>{ const id=$('eventId').value; if(id){ await deleteEvent(id); $('eventDialog').close(); render(); } };
   $('cancelEventBtn').onclick=()=>{$('eventDialog').close();};
   $('studentQuickAddSelect').onchange=e=>applyStudentQuickAdd(e.target.value);
   $('manageStudentsBtn').onclick=openStudentListDialog;
+  if($('manageStudentsMenuBtn')) $('manageStudentsMenuBtn').onclick=()=>{ closeToolbarMenu(); openStudentListDialog(); };
   $('closeStudentsBtn').onclick=()=>$('studentListDialog').close();
   $('cancelStudentsBtn').onclick=()=>$('studentListDialog').close();
   $('saveStudentsBtn').onclick=async()=>{ await saveStudentList(); $('studentListDialog').close(); };
@@ -300,9 +302,7 @@ function closeNoShowContext(){
   const menu=$('noShowContextMenu');
   if(menu){ menu.remove(); }
 }
-function canToggleNoShow(e){
-  return !!e && e.person_key==='donna' && (e.preset_name==='Lesson' || e.preset_name==='No-show' || !['Class','Rehearsal','Meeting','Performance'].includes(e.preset_name||''));
-}
+function canToggleNoShow(e){ return !!e; }
 async function toggleNoShowForEvent(e){
   if(!e) return;
   if(e.recurring_instance){
@@ -321,7 +321,7 @@ function showNoShowContext(e, x, y){
   menu.className='no-show-context-menu';
   const isNoShow=e.status==='no_show';
   const allowed=canToggleNoShow(e);
-  menu.innerHTML=`<button type="button" ${allowed?'':'disabled'}>${isNoShow?'Remove no-show slash':'Mark no-show'}</button><small>${allowed?'Donna lesson/student event':'No-show is for Donna student/lesson events'}</small>`;
+  menu.innerHTML=`<button type="button" ${allowed?'':'disabled'}>${isNoShow?'Remove no-show slash':'Mark no-show'}</button><small>${allowed?'Mark this event as missed/no-show':'No-show unavailable'}</small>`;
   menu.querySelector('button').onclick=async ev=>{ ev.stopPropagation(); await toggleNoShowForEvent(e); };
   document.body.appendChild(menu);
   const rect=menu.getBoundingClientRect();
@@ -342,11 +342,55 @@ function attachNoShowGestures(div,e){
   ['touchend','touchmove','touchcancel','pointercancel'].forEach(name=>div.addEventListener(name,()=>{ if(pressTimer){ clearTimeout(pressTimer); pressTimer=null; } }, {passive:true}));
 }
 
+
+function normalizeTitleForDuplicate(title){
+  return String(title||'').toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();
+}
+function titlesSimilar(a,b){
+  const x=normalizeTitleForDuplicate(a), y=normalizeTitleForDuplicate(b);
+  if(!x || !y) return false;
+  if(x===y) return true;
+  return x.length>=4 && y.length>=4 && (x.includes(y) || y.includes(x));
+}
+function eventsOverlap(a,b){
+  return hmToMin(a.start_time) < hmToMin(b.end_time) && hmToMin(a.end_time) > hmToMin(b.start_time);
+}
+function findDuplicateEvents(candidate){
+  if(!candidate?.date || !candidate?.start_time || !candidate?.end_time || !candidate?.person_key) return [];
+  if(hmToMin(candidate.end_time) <= hmToMin(candidate.start_time)) return [];
+  return state.events.filter(e=>
+    e.id !== candidate.id &&
+    e.date === candidate.date &&
+    e.person_key === candidate.person_key &&
+    e.status !== 'cancelled' &&
+    eventsOverlap(candidate,e) &&
+    titlesSimilar(candidate.title, e.title)
+  ).slice(0,3);
+}
+function formCandidateEvent(){
+  return {
+    id:$('eventId')?.value || '',
+    title:$('eventTitle')?.value || '',
+    person_key:$('personSelect')?.value || 'donna',
+    date:$('eventDate')?.value || '',
+    start_time:$('startTime')?.value || '09:00',
+    end_time:$('endTime')?.value || '09:30'
+  };
+}
+function updateDuplicateWarning(){
+  const box=$('duplicateWarning');
+  if(!box) return;
+  const matches=findDuplicateEvents(formCandidateEvent());
+  if(!matches.length){ box.classList.add('hidden'); box.innerHTML=''; return; }
+  box.classList.remove('hidden');
+  box.innerHTML = `<strong>Possible duplicate</strong><br>${matches.map(e=>`${escapeHtml(e.title)} · ${fmtTime(e.start_time)}–${fmtTime(e.end_time)}`).join('<br>')}<br><small>You can still save if this is intentional.</small>`;
+}
+
 function fillPersonSelect(){ $('personSelect').innerHTML=Object.entries(PEOPLE).map(([k,p])=>`<option value="${k}">${p.label}</option>`).join(''); fillPresetSelect(); fillPalette(); }
 function fillPresetSelect(){ const p=$('personSelect').value||'donna'; $('presetSelect').innerHTML=PEOPLE[p].presets.map(x=>{ const c=PEOPLE[p].palette[PRESET_DEFAULT[x] ?? 0]; return `<option style="background:${c}">${x}</option>`; }).join(''); }
 function updateQuickAddVisibility(){ const row=$('studentQuickAddRow'); if(!row) return; const show=$('personSelect').value==='donna' && ['Lesson','No-show'].includes($('presetSelect').value); row.classList.toggle('hidden', !show); }
-function applyStudentQuickAdd(name){ if(!name) return; $('eventTitle').value=name; $('personSelect').value='donna'; fillPresetSelect(); $('presetSelect').value='Lesson'; $('statusSelect').value='scheduled'; state.selectedColor=PEOPLE.donna.palette[PRESET_DEFAULT.Lesson]; fillPalette(); updateQuickAddVisibility(); }
-function openStudentListDialog(){ $('semesterNameInput').value=state.studentList.semester || defaultSemesterName(); $('studentNamesInput').value=(state.studentList.names||[]).join('\n'); $('studentListDialog').showModal(); }
+function applyStudentQuickAdd(name){ if(!name) return; $('eventTitle').value=name; $('personSelect').value='donna'; fillPresetSelect(); $('presetSelect').value='Lesson'; $('statusSelect').value='scheduled'; state.selectedColor=PEOPLE.donna.palette[PRESET_DEFAULT.Lesson]; fillPalette(); updateQuickAddVisibility(); updateDuplicateWarning(); }
+function openStudentListDialog(){ $('semesterNameInput').value=state.studentList.group || defaultStudentGroupName(); $('studentNamesInput').value=(state.studentList.names||[]).join('\n'); $('studentListDialog').showModal(); }
 function fillPalette(){ const p=$('personSelect').value||'donna'; $('colorPalette').innerHTML=''; PEOPLE[p].palette.forEach(c=>{ const b=document.createElement('button'); b.type='button'; b.className='color-swatch'+(c===state.selectedColor?' selected':''); b.style.background=c; b.title=c; b.onclick=()=>{ state.selectedColor=c; fillPalette(); }; $('colorPalette').appendChild(b); }); }
 
 function expandEventsForRange(rangeStart, rangeDays){
@@ -546,7 +590,6 @@ async function setDetailsStatusFlag(flag, checked){
   }
   const updated={...e};
   if(flag==='no_show'){
-    if(!canToggleNoShow(e)) return;
     updated.status = checked ? 'no_show' : 'scheduled';
   }
   if(flag==='cancelled'){
@@ -567,7 +610,7 @@ function openDetails(e){
   $('eventDetailsContent').innerHTML=`
     <div class="detail-main-title"><span class="detail-dot" style="background:${escapeHtml(e.color||'#ddd')}"></span>${escapeHtml(e.title)}</div>
     <div class="detail-status-toggles">
-      <label class="detail-check ${canToggleNoShow(e)?'':'disabled'}"><input id="detailNoShowCheck" type="checkbox" ${e.status==='no_show'?'checked':''} ${canToggleNoShow(e)?'':'disabled'} /> No-show</label>
+      <label class="detail-check"><input id="detailNoShowCheck" type="checkbox" ${e.status==='no_show'?'checked':''} /> No-show</label>
       <label class="detail-check cancel-check"><input id="detailCancelCheck" type="checkbox" ${e.status==='cancelled'?'checked':''} /> Cancelled</label>
     </div>
     <div class="detail-row"><span class="detail-label">Person</span><span>${escapeHtml(person)}</span></div>
@@ -587,7 +630,7 @@ function openDialog(e){
   $('dialogTitle').textContent=e.id?'Edit':'+ Add'; $('eventId').value=e.id||''; $('eventTitle').value=e.title||''; $('personSelect').value=e.person_key||'donna'; fillPresetSelect(); $('presetSelect').value=e.preset_name||PEOPLE[$('personSelect').value].presets[0];
   $('eventDate').value=e.date||isoDate(state.weekStart); $('startTime').value=e.start_time||'09:00'; $('endTime').value=e.end_time||'09:30'; $('statusSelect').value=e.status||'scheduled'; $('eventNotes').value=e.notes||''; state.selectedColor=e.color||PEOPLE[$('personSelect').value].palette[0]; fillPalette(); fillStudentQuickAddSelect(); if($('studentQuickAddSelect')) $('studentQuickAddSelect').value=''; updateQuickAddVisibility();
   $('repeatToggle').checked=!!e.recurrence_rule?.enabled; $('repeatControls').classList.toggle('hidden',!$('repeatToggle').checked); $('repeatFrequency').value=e.recurrence_rule?.frequency||'weekly'; $('repeatUntil').value=e.recurrence_rule?.until||''; document.querySelectorAll('.weekday-picker input').forEach(ch=>ch.checked=e.recurrence_rule?.days?.map(String).includes(ch.value)||false);
-  $('deleteEventBtn').classList.toggle('hidden',!e.id || e.recurring_instance); $('eventDialog').showModal(); setTimeout(()=>$('eventDialog').focus({preventScroll:true}), 0);
+  $('deleteEventBtn').classList.toggle('hidden',!e.id || e.recurring_instance); updateDuplicateWarning(); $('eventDialog').showModal(); setTimeout(()=>$('eventDialog').focus({preventScroll:true}), 0);
 }
 async function submitForm(){
   const rec=$('repeatToggle').checked ? { enabled:true, frequency:$('repeatFrequency').value, until:$('repeatUntil').value||null, days:[...document.querySelectorAll('.weekday-picker input:checked')].map(x=>Number(x.value)) } : null;

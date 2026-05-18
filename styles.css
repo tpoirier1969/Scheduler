@@ -869,6 +869,7 @@ html, body {
 .student-list-form h2 { margin:0; font-size:1rem; }
 .student-list-form label { display:grid; gap:.18rem; font-weight:650; font-size:.74rem; }
 .student-list-note { margin:0; color:var(--muted); font-size:.72rem; }
+.student-list-dialog textarea { min-height:11rem; }
 #closeStudentsBtn { border:0; background:transparent; font-size:1.35rem; padding:.1rem .35rem; }
 @media (max-width:760px){
   .quick-add-row { grid-template-columns:1fr auto; gap:.3rem; }
@@ -949,3 +950,15 @@ html, body {
 @media (max-width: 700px){
   .event-block.overlap-stack .event-title { font-size: .62rem; }
 }
+
+
+.duplicate-warning {
+  border:1px solid #d18b28;
+  background:#fff4df;
+  color:#5d3510;
+  border-radius:12px;
+  padding:.45rem .55rem;
+  font-size:.74rem;
+  line-height:1.25;
+}
+.duplicate-warning small { color:#6e4a24; }
