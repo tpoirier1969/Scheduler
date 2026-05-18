@@ -25,6 +25,7 @@ async function init(){
   setupSupabase();
   setupControls();
   setupSwipeNavigation();
+  setupNoShowContextClose();
   fillPersonSelect();
   await loadEvents();
   render();
@@ -200,6 +201,58 @@ function checkRailEdges(){
   }
 }
 
+
+function setupNoShowContextClose(){
+  document.addEventListener('click', closeNoShowContext);
+  document.addEventListener('keydown', ev=>{ if(ev.key==='Escape') closeNoShowContext(); });
+  window.addEventListener('scroll', closeNoShowContext, true);
+}
+function closeNoShowContext(){
+  const menu=$('noShowContextMenu');
+  if(menu){ menu.remove(); }
+}
+function canToggleNoShow(e){
+  return !!e && e.person_key==='donna' && (e.preset_name==='Lesson' || e.preset_name==='No-show' || !['Class','Rehearsal','Meeting','Performance'].includes(e.preset_name||''));
+}
+async function toggleNoShowForEvent(e){
+  if(!e) return;
+  if(e.recurring_instance){
+    alert('This is a recurring copy. Open the event details to edit the original series. Recurring exceptions are still a V2 item.');
+    return;
+  }
+  const updated={...e, status:e.status==='no_show'?'scheduled':'no_show'};
+  await saveEvent(updated);
+  closeNoShowContext();
+  render();
+}
+function showNoShowContext(e, x, y){
+  closeNoShowContext();
+  const menu=document.createElement('div');
+  menu.id='noShowContextMenu';
+  menu.className='no-show-context-menu';
+  const isNoShow=e.status==='no_show';
+  const allowed=canToggleNoShow(e);
+  menu.innerHTML=`<button type="button" ${allowed?'':'disabled'}>${isNoShow?'Remove no-show slash':'Mark no-show'}</button><small>${allowed?'Donna lesson/student event':'No-show is for Donna student/lesson events'}</small>`;
+  menu.querySelector('button').onclick=async ev=>{ ev.stopPropagation(); await toggleNoShowForEvent(e); };
+  document.body.appendChild(menu);
+  const rect=menu.getBoundingClientRect();
+  menu.style.left=Math.min(x, window.innerWidth-rect.width-8)+'px';
+  menu.style.top=Math.min(y, window.innerHeight-rect.height-8)+'px';
+}
+function attachNoShowGestures(div,e){
+  div.addEventListener('contextmenu', ev=>{
+    ev.preventDefault(); ev.stopPropagation();
+    showNoShowContext(e, ev.clientX, ev.clientY);
+  });
+  let pressTimer=null;
+  div.addEventListener('touchstart', ev=>{
+    if(ev.touches.length!==1) return;
+    const t=ev.touches[0];
+    pressTimer=setTimeout(()=>showNoShowContext(e, t.clientX, t.clientY), 620);
+  }, {passive:true});
+  ['touchend','touchmove','touchcancel','pointercancel'].forEach(name=>div.addEventListener(name,()=>{ if(pressTimer){ clearTimeout(pressTimer); pressTimer=null; } }, {passive:true}));
+}
+
 function fillPersonSelect(){ $('personSelect').innerHTML=Object.entries(PEOPLE).map(([k,p])=>`<option value="${k}">${p.label}</option>`).join(''); fillPresetSelect(); fillPalette(); }
 function fillPresetSelect(){ const p=$('personSelect').value||'donna'; $('presetSelect').innerHTML=PEOPLE[p].presets.map(x=>{ const c=PEOPLE[p].palette[PRESET_DEFAULT[x] ?? 0]; return `<option style="background:${c}">${x}</option>`; }).join(''); }
 function fillPalette(){ const p=$('personSelect').value||'donna'; $('colorPalette').innerHTML=''; PEOPLE[p].palette.forEach(c=>{ const b=document.createElement('button'); b.type='button'; b.className='color-swatch'+(c===state.selectedColor?' selected':''); b.style.background=c; b.title=c; b.onclick=()=>{ state.selectedColor=c; fillPalette(); }; $('colorPalette').appendChild(b); }); }
@@ -317,7 +370,7 @@ function assignOverlapLanes(list){
   return list.map((e,idx)=>{ const overlap=list.some((o,j)=>j!==idx && hmToMin(o.start_time)<hmToMin(e.end_time) && hmToMin(e.start_time)<hmToMin(o.end_time)); const previous=list.filter((o,j)=>j<idx && hmToMin(o.start_time)<hmToMin(e.end_time) && hmToMin(e.start_time)<hmToMin(o.end_time)).length; return {...e, overlap, lane: overlap ? previous%2 : 0}; });
 }
 function eventEl(e){
-  const div=document.createElement('article'); div.className='event-block '+(e.status==='no_show'?'no-show ':'')+(e.status==='cancelled'?'cancelled ':'')+(e.overlap?'overlap-2 lane-'+e.lane:'');
+  const div=document.createElement('article'); div.className='event-block '+(e.status==='no_show'?'no-show ':'')+(canToggleNoShow(e)?'can-no-show ':'')+(e.status==='cancelled'?'cancelled ':'')+(e.overlap?'overlap-2 lane-'+e.lane:'');
   const startOffset=(hmToMin(e.start_time)-START_HOUR*60)/60;
   const duration=(hmToMin(e.end_time)-hmToMin(e.start_time))/60;
   div.style.top=`calc(var(--time-label-gutter) + ${startOffset} * var(--hour-height))`;
@@ -325,6 +378,7 @@ function eventEl(e){
   div.style.background=e.color||'#ddd';
   const meta = e.notes ? e.notes : `${PEOPLE[e.person_key]?.label||e.person_key} · ${e.preset_name}`;
   div.innerHTML=`<div><div class="event-title">${escapeHtml(e.title)}</div><div class="event-meta">${escapeHtml(meta)}</div></div>`;
+  attachNoShowGestures(div,e);
   div.addEventListener('pointerdown', ev=>ev.stopPropagation()); div.addEventListener('dblclick', ev=>ev.stopPropagation()); div.onclick=(ev)=>{ ev.stopPropagation(); ev.preventDefault(); openDetails(e); };
   return div;
 }

@@ -763,3 +763,60 @@ body.month-view-active .print-overview { display:none !important; }
   opacity: .72;
   filter: grayscale(.2);
 }
+
+
+/* V1.16: no-show marking and tighter visual status */
+.event-block.no-show {
+  position:absolute;
+  outline:1px solid rgba(154, 52, 45, .35);
+}
+.event-block.no-show::after {
+  content:"";
+  position:absolute;
+  left:-8%;
+  top:50%;
+  width:116%;
+  height:3px;
+  background:#c21f18;
+  border-radius:999px;
+  transform:rotate(-12deg);
+  transform-origin:center;
+  box-shadow:0 1px 0 rgba(255,255,255,.35);
+  pointer-events:none;
+  z-index:5;
+}
+.event-block.can-no-show {
+  -webkit-touch-callout:none;
+}
+.no-show-context-menu {
+  position:fixed;
+  z-index:1000;
+  min-width:170px;
+  max-width:230px;
+  padding:.38rem;
+  border:1px solid var(--line);
+  background:#fffdfa;
+  box-shadow:0 12px 30px rgba(0,0,0,.2);
+  border-radius:12px;
+  display:grid;
+  gap:.22rem;
+}
+.no-show-context-menu button {
+  width:100%;
+  text-align:left;
+  border-radius:9px;
+  padding:.38rem .48rem;
+}
+.no-show-context-menu small {
+  color:var(--muted);
+  font-size:.62rem;
+  line-height:1.15;
+}
+.app-icon {
+  width:30px !important;
+  height:30px !important;
+}
+@media (max-width:760px){
+  .app-icon { width:24px !important; height:24px !important; }
+  .event-block.no-show::after { height:2px; }
+}
