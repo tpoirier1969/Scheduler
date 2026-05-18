@@ -820,3 +820,58 @@ body.month-view-active .print-overview { display:none !important; }
   .app-icon { width:24px !important; height:24px !important; }
   .event-block.no-show::after { height:2px; }
 }
+
+
+/* V1.17: mobile interaction fixes and stronger cancelled-state styling */
+html, body {
+  touch-action: pan-x pan-y;
+  overscroll-behavior: none;
+}
+#eventDialog:focus { outline: none; }
+.event-block.cancelled {
+  opacity: .78 !important;
+  background: #ffe0df !important;
+  border-color: #c62828 !important;
+  color: #651b1b !important;
+  box-shadow: inset 0 0 0 2px rgba(198,40,40,.25), 0 1px 4px rgba(0,0,0,.06) !important;
+}
+.event-block.cancelled .event-title,
+.event-block.cancelled .event-meta {
+  text-decoration: line-through;
+  text-decoration-thickness: 2px;
+}
+.event-block.cancelled::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 5px;
+  background: #c62828;
+  pointer-events: none;
+}
+.month-dot[title*="Cancelled"],
+.month-dot.cancelled-dot {
+  background: #ffe0df !important;
+  border-color: #c62828 !important;
+}
+
+/* V1.18 semester student quick-add */
+.quick-add-row {
+  display:grid;
+  grid-template-columns:1fr auto;
+  gap:.4rem;
+  align-items:end;
+}
+.quick-add-row button { white-space:nowrap; }
+.student-list-dialog { width:min(520px,96vw); }
+.student-list-form { display:grid; gap:.55rem; padding:.75rem; }
+.student-list-form h2 { margin:0; font-size:1rem; }
+.student-list-form label { display:grid; gap:.18rem; font-weight:650; font-size:.74rem; }
+.student-list-note { margin:0; color:var(--muted); font-size:.72rem; }
+#closeStudentsBtn { border:0; background:transparent; font-size:1.35rem; padding:.1rem .35rem; }
+@media (max-width:760px){
+  .quick-add-row { grid-template-columns:1fr auto; gap:.3rem; }
+  .quick-add-row button { padding:.28rem .36rem; }
+  .student-list-form { padding:.55rem; gap:.42rem; }
+}

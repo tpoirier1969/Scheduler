@@ -1,4 +1,4 @@
--- Our Scheduler V1
+-- Our Scheduler shared calendar schema
 -- All database objects are project-scoped with tod_donna_calendar_ to avoid collisions.
 
 create extension if not exists pgcrypto;
@@ -111,3 +111,33 @@ create policy tod_donna_calendar_event_exceptions_all on public.tod_donna_calend
 
 drop policy if exists tod_donna_calendar_import_log_all on public.tod_donna_calendar_import_log;
 create policy tod_donna_calendar_import_log_all on public.tod_donna_calendar_import_log for all using (true) with check (true);
+
+-- V1.18: semester-based Donna student quick-add list
+create table if not exists public.tod_donna_calendar_student_quick_adds (
+  id uuid primary key default gen_random_uuid(),
+  semester_name text not null,
+  student_name text not null,
+  sort_order integer not null default 0,
+  is_active boolean not null default true,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique (semester_name, student_name)
+);
+
+create index if not exists tod_donna_calendar_student_quick_adds_semester_idx
+  on public.tod_donna_calendar_student_quick_adds (semester_name, is_active, sort_order, student_name);
+
+alter table public.tod_donna_calendar_student_quick_adds enable row level security;
+
+drop policy if exists "tod_donna_calendar_student_quick_adds_all" on public.tod_donna_calendar_student_quick_adds;
+create policy "tod_donna_calendar_student_quick_adds_all"
+  on public.tod_donna_calendar_student_quick_adds
+  for all
+  using (true)
+  with check (true);
+
+
+drop trigger if exists tod_donna_calendar_student_quick_adds_touch_updated_at on public.tod_donna_calendar_student_quick_adds;
+create trigger tod_donna_calendar_student_quick_adds_touch_updated_at
+before update on public.tod_donna_calendar_student_quick_adds
+for each row execute function public.tod_donna_calendar_touch_updated_at();

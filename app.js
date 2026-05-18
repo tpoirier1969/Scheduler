@@ -7,7 +7,7 @@ const PEOPLE = {
 const PRESET_DEFAULT = { Class:0, Lesson:1, Rehearsal:2, Meeting:3, Performance:4, 'No-show':6, Event:2, Doctor:0, Hair:1, Church:6, Appointment:2, Camping:0, Roadtrip:3, Shopping:1, Friends:4, Family:2, Other:7 };
 const START_HOUR = 7;
 const END_HOUR = 22;
-let state = { weekStart: startOfWeek(new Date()), filter:'all', events:[], selectedColor:'#c8dff0', supabase:null, storageMode:'local', focusDate:null, detailsEvent:null, pendingScrollDate:null, adjustingScroll:false, viewMode:'week' };
+let state = { weekStart: startOfWeek(new Date()), filter:'all', events:[], studentList:{ semester: defaultSemesterName(), names:[] }, selectedColor:'#c8dff0', supabase:null, storageMode:'local', focusDate:null, detailsEvent:null, pendingScrollDate:isoDate(new Date()), adjustingScroll:false, viewMode:'week' };
 
 const $ = id => document.getElementById(id);
 function startOfWeek(d){ const x=new Date(d); x.setHours(0,0,0,0); const day=x.getDay(); const diff=(day+6)%7; x.setDate(x.getDate()-diff); return x; }
@@ -19,14 +19,17 @@ function fmtDate(d){ return d.toLocaleDateString(undefined,{month:'short',day:'n
 function fmtDay(d){ return d.toLocaleDateString(undefined,{weekday:'short'}); }
 function fmtTime(hm){ const [h,m]=hm.split(':').map(Number); const suffix=h>=12?'pm':'am'; const hr=((h+11)%12)+1; return `${hr}:${String(m).padStart(2,'0')}${suffix}`; }
 function uuid(){ return crypto.randomUUID ? crypto.randomUUID() : 'id-'+Date.now()+'-'+Math.random().toString(16).slice(2); }
+function defaultSemesterName(){ const d=new Date(); const y=d.getFullYear(); const m=d.getMonth()+1; if(m>=8) return `Fall ${y}`; if(m>=5) return `Summer ${y}`; return `Spring ${y}`; }
 
 async function init(){
   document.body.classList.add('zoom-compact');
   setupSupabase();
   setupControls();
+  setupZoomGuards();
   setupSwipeNavigation();
   setupNoShowContextClose();
   fillPersonSelect();
+  await loadStudentList();
   await loadEvents();
   render();
 }
@@ -63,6 +66,77 @@ async function loadEvents(){
   state.events=seedEvents();
   await saveAllLocal();
 }
+
+async function loadStudentList(){
+  const fallback = () => {
+    const saved = localStorage.getItem('tod_donna_calendar_student_list_v1');
+    if(saved){
+      try { state.studentList = JSON.parse(saved); }
+      catch { state.studentList = { semester: defaultSemesterName(), names: [] }; }
+    } else {
+      state.studentList = buildStudentListFromEvents(seedEvents());
+      saveStudentListLocal();
+    }
+    fillStudentQuickAddSelect();
+  };
+  if(state.storageMode==='supabase'){
+    const { data, error } = await state.supabase
+      .from('tod_donna_calendar_student_quick_adds')
+      .select('*')
+      .eq('is_active', true)
+      .order('sort_order');
+    if(!error && data?.length){
+      state.studentList = {
+        semester: data[0].semester_name || defaultSemesterName(),
+        names: data.map(r => r.student_name).filter(Boolean)
+      };
+      saveStudentListLocal();
+      fillStudentQuickAddSelect();
+      return;
+    }
+    if(error) console.warn('Student quick-add table unavailable; using local list.', error.message || error);
+  }
+  fallback();
+}
+function buildStudentListFromEvents(events){
+  const excluded = new Set(['tod','dad','frank','showcase','opening night','9 to 5','schedule theory','vocal ensemble']);
+  const names = [...new Set(events
+    .filter(e => e.person_key === 'donna' && (e.preset_name === 'Lesson' || e.preset_name === 'No-show'))
+    .map(e => String(e.title || '').replace(/^No\s+/i,'').trim())
+    .filter(x => x && !excluded.has(x.toLowerCase())))]
+    .sort((a,b)=>a.localeCompare(b));
+  return { semester: defaultSemesterName(), names };
+}
+function saveStudentListLocal(){ localStorage.setItem('tod_donna_calendar_student_list_v1', JSON.stringify(state.studentList)); }
+async function saveStudentList(){
+  state.studentList.semester = ($('semesterNameInput')?.value || defaultSemesterName()).trim() || defaultSemesterName();
+  state.studentList.names = ($('studentNamesInput')?.value || '')
+    .split(/\r?\n/)
+    .map(x=>x.trim())
+    .filter(Boolean)
+    .filter((x,i,a)=>a.findIndex(y=>y.toLowerCase()===x.toLowerCase())===i)
+    .sort((a,b)=>a.localeCompare(b));
+  saveStudentListLocal();
+  if(state.storageMode==='supabase'){
+    const semester = state.studentList.semester;
+    await state.supabase.from('tod_donna_calendar_student_quick_adds').update({ is_active:false }).eq('is_active', true);
+    await state.supabase.from('tod_donna_calendar_student_quick_adds').delete().eq('semester_name', semester);
+    if(state.studentList.names.length){
+      const rows = state.studentList.names.map((name,idx)=>({
+        id: uuid(), semester_name: semester, student_name: name, sort_order: idx, is_active: true
+      }));
+      await state.supabase.from('tod_donna_calendar_student_quick_adds').upsert(rows);
+    }
+  }
+  fillStudentQuickAddSelect();
+}
+function fillStudentQuickAddSelect(){
+  const sel = $('studentQuickAddSelect');
+  if(!sel) return;
+  const label = state.studentList?.semester ? `Choose student… (${state.studentList.semester})` : 'Choose student…';
+  sel.innerHTML = `<option value="">${escapeHtml(label)}</option>` + (state.studentList.names || []).map(n=>`<option value="${escapeHtml(n)}">${escapeHtml(n)}</option>`).join('');
+}
+
 function fromDb(r){
   return { id:r.id, title:r.title, person_key:r.person_key, preset_name:r.preset_name, status:r.status, date:r.event_date, start_time:r.start_time.slice(0,5), end_time:r.end_time.slice(0,5), notes:r.notes||'', color:r.color_hex, recurrence_rule:r.recurrence_rule, imported:r.imported_source?true:false };
 }
@@ -82,6 +156,16 @@ async function deleteEvent(id){
 }
 async function saveAllLocal(){ localStorage.setItem('tod_donna_calendar_events_v1', JSON.stringify(state.events)); }
 
+function setupZoomGuards(){
+  // Phone web-app behavior: do not let two-finger pinch zoom wreck the 3-day rail.
+  ['gesturestart','gesturechange','gestureend'].forEach(name=>{
+    document.addEventListener(name, ev=>ev.preventDefault(), { passive:false });
+  });
+  document.addEventListener('touchmove', ev=>{
+    if(ev.touches && ev.touches.length > 1) ev.preventDefault();
+  }, { passive:false });
+}
+
 function setupControls(){
   $('prevWeekBtn').onclick=()=>{ shiftVisibleRange(-1); closeToolbarMenu(); render(); };
   $('nextWeekBtn').onclick=()=>{ shiftVisibleRange(1); closeToolbarMenu(); render(); };
@@ -94,13 +178,18 @@ function setupControls(){
   $('weekPicker').onchange=e=>{ if(e.target.value){ state.weekStart=startOfWeek(new Date(e.target.value+'T00:00')); state.viewMode='week'; document.body.classList.remove('month-view-active'); closeToolbarMenu(); render(); } };
   $('zoomSelect').onchange=e=>{ document.body.classList.remove('zoom-compact','zoom-detailed'); document.body.classList.add('zoom-'+e.target.value); };
   $('calendarSelect').onchange=e=>{ state.filter=e.target.value; state.focusDate=null; document.body.classList.remove('focus-day'); closeToolbarMenu(); render(); };
-  $('addEventBtn').onclick=()=>openDialog({date: isoDate(state.weekStart), start_time:'09:00', end_time:'09:30', person_key:'donna'});
-  $('personSelect').onchange=()=>{ fillPresetSelect(); fillPalette(); };
-  $('presetSelect').onchange=()=>{ const p=$('personSelect').value, preset=$('presetSelect').value; const idx=PRESET_DEFAULT[preset] ?? 0; state.selectedColor=PEOPLE[p].palette[idx]; fillPalette(); if(preset==='No-show') $('statusSelect').value='no_show'; };
+  $('addEventBtn').onclick=()=>openDialog({date: firstVisibleRailDate ? firstVisibleRailDate() : isoDate(new Date()), start_time:'09:00', end_time:'09:30', person_key:'donna'});
+  $('personSelect').onchange=()=>{ fillPresetSelect(); fillPalette(); updateQuickAddVisibility(); };
+  $('presetSelect').onchange=()=>{ const p=$('personSelect').value, preset=$('presetSelect').value; const idx=PRESET_DEFAULT[preset] ?? 0; state.selectedColor=PEOPLE[p].palette[idx]; fillPalette(); if(preset==='No-show') $('statusSelect').value='no_show'; updateQuickAddVisibility(); };
   $('repeatToggle').onchange=e=>$('repeatControls').classList.toggle('hidden', !e.target.checked);
   $('saveEventBtn').onclick=async ev=>{ ev.preventDefault(); await submitForm(); };
   $('deleteEventBtn').onclick=async()=>{ const id=$('eventId').value; if(id){ await deleteEvent(id); $('eventDialog').close(); render(); } };
   $('cancelEventBtn').onclick=()=>{$('eventDialog').close();};
+  $('studentQuickAddSelect').onchange=e=>applyStudentQuickAdd(e.target.value);
+  $('manageStudentsBtn').onclick=openStudentListDialog;
+  $('closeStudentsBtn').onclick=()=>$('studentListDialog').close();
+  $('cancelStudentsBtn').onclick=()=>$('studentListDialog').close();
+  $('saveStudentsBtn').onclick=async()=>{ await saveStudentList(); $('studentListDialog').close(); };
   $('closeDetailsBtn').onclick=()=>$('eventDetailsDialog').close();
   $('editDetailsBtn').onclick=()=>{ const e=state.detailsEvent; $('eventDetailsDialog').close(); if(e) openDialog(e); };
   $('deleteDetailsBtn').onclick=async()=>{ const e=state.detailsEvent; if(e?.id && !e.recurring_instance){ await deleteEvent(e.id); $('eventDetailsDialog').close(); render(); } };
@@ -255,6 +344,9 @@ function attachNoShowGestures(div,e){
 
 function fillPersonSelect(){ $('personSelect').innerHTML=Object.entries(PEOPLE).map(([k,p])=>`<option value="${k}">${p.label}</option>`).join(''); fillPresetSelect(); fillPalette(); }
 function fillPresetSelect(){ const p=$('personSelect').value||'donna'; $('presetSelect').innerHTML=PEOPLE[p].presets.map(x=>{ const c=PEOPLE[p].palette[PRESET_DEFAULT[x] ?? 0]; return `<option style="background:${c}">${x}</option>`; }).join(''); }
+function updateQuickAddVisibility(){ const row=$('studentQuickAddRow'); if(!row) return; const show=$('personSelect').value==='donna' && ['Lesson','No-show'].includes($('presetSelect').value); row.classList.toggle('hidden', !show); }
+function applyStudentQuickAdd(name){ if(!name) return; $('eventTitle').value=name; $('personSelect').value='donna'; fillPresetSelect(); $('presetSelect').value='Lesson'; $('statusSelect').value='scheduled'; state.selectedColor=PEOPLE.donna.palette[PRESET_DEFAULT.Lesson]; fillPalette(); updateQuickAddVisibility(); }
+function openStudentListDialog(){ $('semesterNameInput').value=state.studentList.semester || defaultSemesterName(); $('studentNamesInput').value=(state.studentList.names||[]).join('\n'); $('studentListDialog').showModal(); }
 function fillPalette(){ const p=$('personSelect').value||'donna'; $('colorPalette').innerHTML=''; PEOPLE[p].palette.forEach(c=>{ const b=document.createElement('button'); b.type='button'; b.className='color-swatch'+(c===state.selectedColor?' selected':''); b.style.background=c; b.title=c; b.onclick=()=>{ state.selectedColor=c; fillPalette(); }; $('colorPalette').appendChild(b); }); }
 
 function expandEventsForRange(rangeStart, rangeDays){
@@ -419,9 +511,9 @@ function openDetails(e){
 }
 function openDialog(e){
   $('dialogTitle').textContent=e.id?'Edit':'+ Add'; $('eventId').value=e.id||''; $('eventTitle').value=e.title||''; $('personSelect').value=e.person_key||'donna'; fillPresetSelect(); $('presetSelect').value=e.preset_name||PEOPLE[$('personSelect').value].presets[0];
-  $('eventDate').value=e.date||isoDate(state.weekStart); $('startTime').value=e.start_time||'09:00'; $('endTime').value=e.end_time||'09:30'; $('statusSelect').value=e.status||'scheduled'; $('eventNotes').value=e.notes||''; state.selectedColor=e.color||PEOPLE[$('personSelect').value].palette[0]; fillPalette();
+  $('eventDate').value=e.date||isoDate(state.weekStart); $('startTime').value=e.start_time||'09:00'; $('endTime').value=e.end_time||'09:30'; $('statusSelect').value=e.status||'scheduled'; $('eventNotes').value=e.notes||''; state.selectedColor=e.color||PEOPLE[$('personSelect').value].palette[0]; fillPalette(); fillStudentQuickAddSelect(); if($('studentQuickAddSelect')) $('studentQuickAddSelect').value=''; updateQuickAddVisibility();
   $('repeatToggle').checked=!!e.recurrence_rule?.enabled; $('repeatControls').classList.toggle('hidden',!$('repeatToggle').checked); $('repeatFrequency').value=e.recurrence_rule?.frequency||'weekly'; $('repeatUntil').value=e.recurrence_rule?.until||''; document.querySelectorAll('.weekday-picker input').forEach(ch=>ch.checked=e.recurrence_rule?.days?.map(String).includes(ch.value)||false);
-  $('deleteEventBtn').classList.toggle('hidden',!e.id || e.recurring_instance); $('eventDialog').showModal();
+  $('deleteEventBtn').classList.toggle('hidden',!e.id || e.recurring_instance); $('eventDialog').showModal(); setTimeout(()=>$('eventDialog').focus({preventScroll:true}), 0);
 }
 async function submitForm(){
   const rec=$('repeatToggle').checked ? { enabled:true, frequency:$('repeatFrequency').value, until:$('repeatUntil').value||null, days:[...document.querySelectorAll('.weekday-picker input:checked')].map(x=>Number(x.value)) } : null;

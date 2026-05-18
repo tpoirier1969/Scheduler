@@ -2,12 +2,12 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
   <title>Our Scheduler</title>
   <link rel="icon" href="our-scheduler-icon.svg?v=1.16" type="image/svg+xml" />
   <link rel="apple-touch-icon" href="our-scheduler-icon-180.png?v=1.16" />
   <link rel="manifest" href="manifest.webmanifest?v=1.16" />
-  <link rel="stylesheet" href="styles.css?v=1.16" />
+  <link rel="stylesheet" href="styles.css?v=1.18" />
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="config.js?v=1.5"></script>
 </head>
@@ -17,7 +17,7 @@
       <img src="our-scheduler-icon.svg?v=1.16" alt="" class="app-icon" />
       <div>
         <h1>Our Scheduler</h1>
-        <p class="version">V1.16 · shared weekly planner</p>
+        <p class="version">V1.18 · shared weekly planner</p>
       </div>
     </div>
     <button id="addEventBtn" class="primary compact-add">+ Add</button>
@@ -77,11 +77,19 @@
     </section>
   </dialog>
 
-  <dialog id="eventDialog">
+  <dialog id="eventDialog" tabindex="-1">
     <form method="dialog" id="eventForm" class="event-form">
       <div class="dialog-title-row"><h2 id="dialogTitle">+ Add</h2><label class="date-inline">Date <input id="eventDate" type="date" required /></label></div>
       <input type="hidden" id="eventId" />
       <label>Title <input id="eventTitle" required /></label>
+      <div id="studentQuickAddRow" class="quick-add-row">
+        <label>Student Quick Add
+          <select id="studentQuickAddSelect">
+            <option value="">Choose student…</option>
+          </select>
+        </label>
+        <button type="button" id="manageStudentsBtn">Manage</button>
+      </div>
       <div class="form-row two-col">
         <label>Person
           <select id="personSelect"></select>
@@ -134,7 +142,29 @@
     </form>
   </dialog>
 
+
+  <dialog id="studentListDialog" class="student-list-dialog">
+    <form method="dialog" id="studentListForm" class="student-list-form">
+      <div class="dialog-title-row">
+        <h2>Semester Students</h2>
+        <button id="closeStudentsBtn" type="button" aria-label="Close student list">×</button>
+      </div>
+      <label>Semester name
+        <input id="semesterNameInput" placeholder="Spring 2026" />
+      </label>
+      <label>Students, one per line
+        <textarea id="studentNamesInput" rows="10" placeholder="Ava
+Cayden
+Maddie"></textarea>
+      </label>
+      <p class="student-list-note">These quick-add names fill Donna + Lesson automatically. Change the list each semester.</p>
+      <menu>
+        <button type="button" id="cancelStudentsBtn">Cancel</button>
+        <button type="button" id="saveStudentsBtn" class="primary">Save list</button>
+      </menu>
+    </form>
+  </dialog>
   <script src="seed-events.js?v=1.5"></script>
-  <script src="app.js?v=1.16"></script>
+  <script src="app.js?v=1.18"></script>
 </body>
 </html>
