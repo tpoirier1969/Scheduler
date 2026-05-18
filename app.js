@@ -459,14 +459,49 @@ function renderGrid(events){
   requestAnimationFrame(resetCarouselPosition);
 }
 function assignOverlapLanes(list){
-  return list.map((e,idx)=>{ const overlap=list.some((o,j)=>j!==idx && hmToMin(o.start_time)<hmToMin(e.end_time) && hmToMin(e.start_time)<hmToMin(o.end_time)); const previous=list.filter((o,j)=>j<idx && hmToMin(o.start_time)<hmToMin(e.end_time) && hmToMin(e.start_time)<hmToMin(o.end_time)).length; return {...e, overlap, lane: overlap ? previous%2 : 0}; });
+  const sorted=[...list].sort((a,b)=>hmToMin(a.start_time)-hmToMin(b.start_time)||hmToMin(a.end_time)-hmToMin(b.end_time));
+  const groups=[];
+  let current=[];
+  let currentEnd=-1;
+  for(const e of sorted){
+    const start=hmToMin(e.start_time);
+    const end=hmToMin(e.end_time);
+    if(!current.length || start < currentEnd){
+      current.push(e);
+      currentEnd=Math.max(currentEnd,end);
+    } else {
+      groups.push(current);
+      current=[e];
+      currentEnd=end;
+    }
+  }
+  if(current.length) groups.push(current);
+
+  const positioned=[];
+  for(const group of groups){
+    const laneEnds=[];
+    const placed=[];
+    for(const e of group){
+      const start=hmToMin(e.start_time);
+      const end=hmToMin(e.end_time);
+      let lane=laneEnds.findIndex(x=>x<=start);
+      if(lane<0){ lane=laneEnds.length; laneEnds.push(end); }
+      else laneEnds[lane]=end;
+      placed.push({...e, lane, lanes:0});
+    }
+    const lanes=Math.max(1,laneEnds.length);
+    placed.forEach(e=>positioned.push({...e, lanes, overlap:lanes>1}));
+  }
+  return positioned;
 }
 function eventEl(e){
-  const div=document.createElement('article'); div.className='event-block '+(e.status==='no_show'?'no-show ':'')+(canToggleNoShow(e)?'can-no-show ':'')+(e.status==='cancelled'?'cancelled ':'')+(e.overlap?'overlap-2 lane-'+e.lane:'');
+  const div=document.createElement('article'); div.className='event-block '+(e.status==='no_show'?'no-show ':'')+(canToggleNoShow(e)?'can-no-show ':'')+(e.status==='cancelled'?'cancelled ':'')+(e.overlap?'overlap-lane ':'');
   const startOffset=(hmToMin(e.start_time)-START_HOUR*60)/60;
   const duration=(hmToMin(e.end_time)-hmToMin(e.start_time))/60;
   div.style.top=`calc(var(--time-label-gutter) + ${startOffset} * var(--hour-height))`;
   div.style.height=`calc(${duration} * var(--hour-height))`;
+  div.style.setProperty('--event-lane', String(e.lane || 0));
+  div.style.setProperty('--event-lanes', String(e.lanes || 1));
   div.style.background=e.color||'#ddd';
   const meta = e.notes ? e.notes : `${PEOPLE[e.person_key]?.label||e.person_key} · ${e.preset_name}`;
   div.innerHTML=`<div><div class="event-title">${escapeHtml(e.title)}</div><div class="event-meta">${escapeHtml(meta)}</div></div>`;
@@ -492,6 +527,29 @@ function renderPrint(events, startArg=null, daysArg=null){
   }
 }
 
+
+async function setDetailsStatusFlag(flag, checked){
+  const e=state.detailsEvent;
+  if(!e) return;
+  if(e.recurring_instance){
+    alert('This is a recurring copy. Recurring occurrence edits are still a V2 item.');
+    render();
+    return;
+  }
+  const updated={...e};
+  if(flag==='no_show'){
+    if(!canToggleNoShow(e)) return;
+    updated.status = checked ? 'no_show' : 'scheduled';
+  }
+  if(flag==='cancelled'){
+    updated.status = checked ? 'cancelled' : 'scheduled';
+  }
+  await saveEvent(updated);
+  state.detailsEvent=updated;
+  render();
+  openDetails(updated);
+}
+
 function openDetails(e){
   state.detailsEvent=e;
   const person=PEOPLE[e.person_key]?.label||e.person_key;
@@ -500,6 +558,10 @@ function openDetails(e){
   $('deleteDetailsBtn').classList.toggle('hidden', !!e.recurring_instance);
   $('eventDetailsContent').innerHTML=`
     <div class="detail-main-title"><span class="detail-dot" style="background:${escapeHtml(e.color||'#ddd')}"></span>${escapeHtml(e.title)}</div>
+    <div class="detail-status-toggles">
+      <label class="detail-check ${canToggleNoShow(e)?'':'disabled'}"><input id="detailNoShowCheck" type="checkbox" ${e.status==='no_show'?'checked':''} ${canToggleNoShow(e)?'':'disabled'} /> No-show</label>
+      <label class="detail-check cancel-check"><input id="detailCancelCheck" type="checkbox" ${e.status==='cancelled'?'checked':''} /> Cancelled</label>
+    </div>
     <div class="detail-row"><span class="detail-label">Person</span><span>${escapeHtml(person)}</span></div>
     <div class="detail-row"><span class="detail-label">Preset</span><span><span class="detail-chip" style="background:${escapeHtml(e.color||'#ddd')}">${escapeHtml(e.preset_name||'')}</span></span></div>
     <div class="detail-row"><span class="detail-label">Date</span><span>${escapeHtml(e.date)}</span></div>
@@ -508,6 +570,10 @@ function openDetails(e){
     <div class="detail-row"><span class="detail-label">Repeat</span><span>${escapeHtml(recurrence)}</span></div>
     <div class="detail-row"><span class="detail-label">Notes</span><span>${escapeHtml(e.notes||'')}</span></div>`;
   $('eventDetailsDialog').showModal();
+  const ns=$('detailNoShowCheck');
+  const cc=$('detailCancelCheck');
+  if(ns) ns.onchange=ev=>setDetailsStatusFlag('no_show', ev.target.checked);
+  if(cc) cc.onchange=ev=>setDetailsStatusFlag('cancelled', ev.target.checked);
 }
 function openDialog(e){
   $('dialogTitle').textContent=e.id?'Edit':'+ Add'; $('eventId').value=e.id||''; $('eventTitle').value=e.title||''; $('personSelect').value=e.person_key||'donna'; fillPresetSelect(); $('presetSelect').value=e.preset_name||PEOPLE[$('personSelect').value].presets[0];

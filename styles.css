@@ -875,3 +875,60 @@ html, body {
   .quick-add-row button { padding:.28rem .36rem; }
   .student-list-form { padding:.55rem; gap:.42rem; }
 }
+
+
+/* V1.19: readable overlap lanes + detail status toggles */
+.event-block {
+  --event-gutter: 2.12rem;
+  --event-right: .22rem;
+  --event-gap: .12rem;
+  left: calc(var(--event-gutter) + (var(--event-lane, 0) * ((100% - var(--event-gutter) - var(--event-right)) / var(--event-lanes, 1))) + (var(--event-lane, 0) * var(--event-gap) / 2)) !important;
+  right: auto !important;
+  width: calc(((100% - var(--event-gutter) - var(--event-right)) / var(--event-lanes, 1)) - var(--event-gap)) !important;
+}
+.event-block > div {
+  min-width: 0;
+  width: 100%;
+}
+.event-block.overlap-lane {
+  padding-left: .12rem;
+  padding-right: .12rem;
+}
+.event-block.overlap-lane .event-title {
+  font-size: .46rem;
+}
+.detail-status-toggles {
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:.4rem;
+  margin:.1rem 0 .25rem;
+}
+.detail-check {
+  display:flex;
+  align-items:center;
+  gap:.34rem;
+  border:1px solid var(--line);
+  border-radius:10px;
+  padding:.42rem .5rem;
+  font-weight:750;
+  background:#fffaf3;
+}
+.detail-check input { min-width:auto; }
+.detail-check.disabled { opacity:.48; }
+.detail-check.cancel-check:has(input:checked) {
+  border-color:#c62828;
+  color:#651b1b;
+  background:#ffe0df;
+}
+.detail-check:has(#detailNoShowCheck:checked) {
+  border-color:#c62828;
+  color:#651b1b;
+  background:#fff0ef;
+}
+@media (max-width:760px){
+  .event-block { --event-gutter: 1.58rem; --event-right: .14rem; --event-gap: .08rem; }
+  .event-block.overlap-lane .event-title { font-size: .48rem; }
+}
+@media (min-width:761px) and (max-width:1100px){
+  .event-block { --event-gutter: 1.92rem; }
+}
