@@ -459,7 +459,7 @@ function renderGrid(events){
   requestAnimationFrame(resetCarouselPosition);
 }
 function assignOverlapLanes(list){
-  const sorted=[...list].sort((a,b)=>hmToMin(a.start_time)-hmToMin(b.start_time)||hmToMin(a.end_time)-hmToMin(b.end_time));
+  const sorted=[...list].sort((a,b)=>hmToMin(a.start_time)-hmToMin(b.start_time)||hmToMin(a.end_time)-hmToMin(b.end_time)||String(a.title||'').localeCompare(String(b.title||'')));
   const groups=[];
   let current=[];
   let currentEnd=-1;
@@ -490,18 +490,26 @@ function assignOverlapLanes(list){
       placed.push({...e, lane, lanes:0});
     }
     const lanes=Math.max(1,laneEnds.length);
-    placed.forEach(e=>positioned.push({...e, lanes, overlap:lanes>1}));
+    if(lanes>2){
+      // Too many true overlaps make unreadable toothpick blocks. Keep them full-width and cascade
+      // slightly so every title remains readable and duplicate accidental entries stand out.
+      placed.forEach((e,idx)=>positioned.push({...e, lane:0, lanes:1, overlap:false, overlapStack:true, stackIndex:idx}));
+    } else {
+      placed.forEach(e=>positioned.push({...e, lanes, overlap:lanes>1, overlapStack:false, stackIndex:0}));
+    }
   }
   return positioned;
 }
 function eventEl(e){
-  const div=document.createElement('article'); div.className='event-block '+(e.status==='no_show'?'no-show ':'')+(canToggleNoShow(e)?'can-no-show ':'')+(e.status==='cancelled'?'cancelled ':'')+(e.overlap?'overlap-lane ':'');
+  const div=document.createElement('article'); div.className='event-block '+(e.status==='no_show'?'no-show ':'')+(canToggleNoShow(e)?'can-no-show ':'')+(e.status==='cancelled'?'cancelled ':'')+(e.overlap?'overlap-lane ':'')+(e.overlapStack?'overlap-stack ':'');
   const startOffset=(hmToMin(e.start_time)-START_HOUR*60)/60;
   const duration=(hmToMin(e.end_time)-hmToMin(e.start_time))/60;
   div.style.top=`calc(var(--time-label-gutter) + ${startOffset} * var(--hour-height))`;
   div.style.height=`calc(${duration} * var(--hour-height))`;
   div.style.setProperty('--event-lane', String(e.lane || 0));
   div.style.setProperty('--event-lanes', String(e.lanes || 1));
+  div.style.setProperty('--event-stack-index', String(e.stackIndex || 0));
+  if(e.overlapStack){ div.style.transform = `translateY(calc(${e.stackIndex || 0} * .42rem))`; div.style.zIndex = String(10 + (e.stackIndex || 0)); }
   div.style.background=e.color||'#ddd';
   const meta = e.notes ? e.notes : `${PEOPLE[e.person_key]?.label||e.person_key} · ${e.preset_name}`;
   div.innerHTML=`<div><div class="event-title">${escapeHtml(e.title)}</div><div class="event-meta">${escapeHtml(meta)}</div></div>`;

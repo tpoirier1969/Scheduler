@@ -932,3 +932,20 @@ html, body {
 @media (min-width:761px) and (max-width:1100px){
   .event-block { --event-gutter: 1.92rem; }
 }
+
+/* V1.20: avoid microscopic overlap lanes when many items collide */
+.event-block.overlap-stack {
+  left: var(--event-gutter) !important;
+  right: var(--event-right) !important;
+  width: auto !important;
+  box-shadow: 0 2px 7px rgba(0,0,0,.12);
+}
+.event-block.overlap-stack .event-title {
+  font-size: .56rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+@media (max-width: 700px){
+  .event-block.overlap-stack .event-title { font-size: .62rem; }
+}
