@@ -962,3 +962,25 @@ html, body {
   line-height:1.25;
 }
 .duplicate-warning small { color:#6e4a24; }
+
+/* V1.23 Active Students visibility and editor */
+.header-actions{display:flex;gap:.35rem;align-items:center;margin-left:auto;}
+.secondary{background:#fff;border:1px solid var(--line);color:var(--ink);}
+.quick-add-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:.45rem;align-items:end;margin:.15rem 0 .05rem;}
+.quick-add-row label{display:grid;gap:.18rem;}
+.quick-add-row.hidden{display:none!important;}
+.quick-add-hint{margin:-.15rem 0 .25rem;color:var(--muted);font-size:.72rem;line-height:1.25;}
+.quick-add-hint.hidden{display:none!important;}
+.student-editor-head,.student-row{display:grid;grid-template-columns:minmax(0,1fr) 110px 34px;gap:.4rem;align-items:center;}
+.student-editor-head{font-size:.72rem;color:var(--muted);margin:.25rem 0 .2rem;}
+.student-rows{display:grid;gap:.32rem;max-height:45vh;overflow:auto;padding-right:.12rem;}
+.student-row input,.student-row select{width:100%;}
+.student-row button{width:32px;height:32px;border-radius:999px;padding:0;}
+.add-student-row{margin-top:.45rem;}
+@media (max-width:700px){
+  .header-actions{gap:.2rem;}
+  #studentsHeaderBtn{font-size:.58rem;padding:.14rem .28rem;min-height:22px;}
+  .quick-add-row{grid-template-columns:1fr;gap:.25rem;}
+  .quick-add-row button{width:100%;}
+  .student-editor-head,.student-row{grid-template-columns:minmax(0,1fr) 84px 30px;gap:.28rem;}
+}

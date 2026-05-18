@@ -7,7 +7,7 @@
   <link rel="icon" href="our-scheduler-icon.svg?v=1.16" type="image/svg+xml" />
   <link rel="apple-touch-icon" href="our-scheduler-icon-180.png?v=1.16" />
   <link rel="manifest" href="manifest.webmanifest?v=1.16" />
-  <link rel="stylesheet" href="styles.css?v=1.22" />
+  <link rel="stylesheet" href="styles.css?v=1.23" />
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="config.js?v=1.5"></script>
 </head>
@@ -17,10 +17,10 @@
       <img src="our-scheduler-icon.svg?v=1.16" alt="" class="app-icon" />
       <div>
         <h1>Our Scheduler</h1>
-        <p class="version">V1.22 · shared weekly planner</p>
+        <p class="version">V1.23 · shared weekly planner</p>
       </div>
     </div>
-    <button id="addEventBtn" class="primary compact-add">+ Add</button>
+    <div class="header-actions"><button id="studentsHeaderBtn" class="secondary compact-add" type="button">Students</button><button id="addEventBtn" class="primary compact-add">+ Add</button></div>
   </header>
 
   <nav class="toolbar" aria-label="Calendar controls">
@@ -85,13 +85,14 @@
       <label>Title <input id="eventTitle" required /></label>
       <div id="duplicateWarning" class="duplicate-warning hidden" role="alert"></div>
       <div id="studentQuickAddRow" class="quick-add-row">
-        <label>Active Student Quick Add
+        <label>Donna student
           <select id="studentQuickAddSelect">
-            <option value="">Choose student…</option>
+            <option value="">Choose active student…</option>
           </select>
         </label>
-        <button type="button" id="manageStudentsBtn">Manage</button>
+        <button type="button" id="manageStudentsBtn">Edit Students</button>
       </div>
+      <p id="studentQuickAddHint" class="quick-add-hint">Choose an active student to auto-fill Donna + Lesson and the standard lesson time.</p>
       <div class="form-row two-col">
         <label>Person
           <select id="personSelect"></select>
@@ -154,12 +155,14 @@
       <label>List name
         <input id="semesterNameInput" placeholder="Active students" />
       </label>
-      <label>Students, one per line
-        <textarea id="studentNamesInput" rows="10" placeholder="Ava | 30
-Cayden | 60
-Maddie | 30"></textarea>
-      </label>
-      <p class="student-list-note">Use Name | 30 or Name | 60. Quick-add fills Donna + Lesson automatically and sets the end time from the standard lesson time.</p>
+      <div class="student-editor-head">
+        <strong>Student</strong>
+        <strong>Standard time</strong>
+        <span></span>
+      </div>
+      <div id="studentRows" class="student-rows"></div>
+      <button type="button" id="addStudentRowBtn" class="secondary add-student-row">+ Add student</button>
+      <p class="student-list-note">These are Donna’s active students. Quick-add fills Donna + Lesson and sets the end time from the standard lesson time.</p>
       <menu>
         <button type="button" id="cancelStudentsBtn">Cancel</button>
         <button type="button" id="saveStudentsBtn" class="primary">Save list</button>
@@ -167,6 +170,6 @@ Maddie | 30"></textarea>
     </form>
   </dialog>
   <script src="seed-events.js?v=1.5"></script>
-  <script src="app.js?v=1.22"></script>
+  <script src="app.js?v=1.23"></script>
 </body>
 </html>

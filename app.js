@@ -138,26 +138,50 @@ function buildStudentListFromEvents(events){
 }
 function saveStudentListLocal(){ state.studentList=normalizeStudentList(state.studentList); localStorage.setItem('tod_donna_calendar_active_students_v1', JSON.stringify(state.studentList)); }
 async function saveStudentList(){
-  state.studentList.group = ($('semesterNameInput')?.value || defaultStudentGroupName()).trim() || defaultStudentGroupName();
-  state.studentList.names = ($('studentNamesInput')?.value || '')
-    .split(/\r?\n/)
-    .map(x=>x.trim())
-    .filter(Boolean)
-    .filter((x,i,a)=>a.findIndex(y=>y.toLowerCase()===x.toLowerCase())===i)
-    .sort((a,b)=>a.localeCompare(b));
+  const group = ($('semesterNameInput')?.value || defaultStudentGroupName()).trim() || defaultStudentGroupName();
+  const rows = [...document.querySelectorAll('.student-row')].map(row=>({
+    name: row.querySelector('.student-name-input')?.value.trim() || '',
+    standard_lesson_minutes: normalizeLessonMinutes(row.querySelector('.student-minutes-select')?.value || 30)
+  })).filter(s=>s.name);
+  const seen = new Set();
+  const students = rows
+    .filter(s=>{ const k=s.name.toLowerCase(); if(seen.has(k)) return false; seen.add(k); return true; })
+    .sort((a,b)=>a.name.localeCompare(b.name));
+  state.studentList = normalizeStudentList({ group, students });
   saveStudentListLocal();
   if(state.storageMode==='supabase'){
-    const group = state.studentList.group;
     await state.supabase.from('tod_donna_calendar_active_students').update({ is_active:false }).eq('is_active', true);
     await state.supabase.from('tod_donna_calendar_active_students').delete().eq('student_group', group);
     if(state.studentList.students.length){
-      const rows = state.studentList.students.map((student,idx)=>({
+      const dbRows = state.studentList.students.map((student,idx)=>({
         id: uuid(), student_group: group, student_name: student.name, standard_lesson_minutes: normalizeLessonMinutes(student.standard_lesson_minutes), sort_order: idx, is_active: true
       }));
-      await state.supabase.from('tod_donna_calendar_active_students').upsert(rows);
+      await state.supabase.from('tod_donna_calendar_active_students').upsert(dbRows);
     }
   }
   fillStudentQuickAddSelect();
+}
+function addStudentEditorRow(student={name:'', standard_lesson_minutes:30}){
+  const wrap=$('studentRows');
+  if(!wrap) return;
+  const row=document.createElement('div');
+  row.className='student-row';
+  row.innerHTML=`<input class="student-name-input" placeholder="Student name" value="${escapeHtml(student.name||'')}" />
+    <select class="student-minutes-select" aria-label="Standard lesson time">
+      <option value="30" ${normalizeLessonMinutes(student.standard_lesson_minutes)===30?'selected':''}>30 min</option>
+      <option value="60" ${normalizeLessonMinutes(student.standard_lesson_minutes)===60?'selected':''}>60 min</option>
+    </select>
+    <button type="button" class="remove-student-row" aria-label="Remove student">×</button>`;
+  row.querySelector('.remove-student-row').onclick=()=>row.remove();
+  wrap.appendChild(row);
+}
+function renderStudentEditorRows(){
+  const wrap=$('studentRows');
+  if(!wrap) return;
+  wrap.innerHTML='';
+  const students=(state.studentList.students||[]);
+  if(!students.length) addStudentEditorRow({name:'', standard_lesson_minutes:30});
+  students.forEach(addStudentEditorRow);
 }
 function fillStudentQuickAddSelect(){
   const sel = $('studentQuickAddSelect');
@@ -208,6 +232,7 @@ function setupControls(){
   $('zoomSelect').onchange=e=>{ document.body.classList.remove('zoom-compact','zoom-detailed'); document.body.classList.add('zoom-'+e.target.value); };
   $('calendarSelect').onchange=e=>{ state.filter=e.target.value; state.focusDate=null; document.body.classList.remove('focus-day'); closeToolbarMenu(); render(); };
   $('addEventBtn').onclick=()=>openDialog({date: firstVisibleRailDate ? firstVisibleRailDate() : isoDate(new Date()), start_time:'09:00', end_time:'09:30', person_key:'donna'});
+  if($('studentsHeaderBtn')) $('studentsHeaderBtn').onclick=openStudentListDialog;
   $('personSelect').onchange=()=>{ fillPresetSelect(); fillPalette(); updateQuickAddVisibility(); };
   $('presetSelect').onchange=()=>{ const p=$('personSelect').value, preset=$('presetSelect').value; const idx=PRESET_DEFAULT[preset] ?? 0; state.selectedColor=PEOPLE[p].palette[idx]; fillPalette(); if(preset==='No-show') $('statusSelect').value='no_show'; updateQuickAddVisibility(); };
   $('repeatToggle').onchange=e=>$('repeatControls').classList.toggle('hidden', !e.target.checked);
@@ -220,6 +245,7 @@ function setupControls(){
   if($('manageStudentsMenuBtn')) $('manageStudentsMenuBtn').onclick=()=>{ closeToolbarMenu(); openStudentListDialog(); };
   $('closeStudentsBtn').onclick=()=>$('studentListDialog').close();
   $('cancelStudentsBtn').onclick=()=>$('studentListDialog').close();
+  $('addStudentRowBtn').onclick=()=>addStudentEditorRow({name:'', standard_lesson_minutes:30});
   $('saveStudentsBtn').onclick=async()=>{ await saveStudentList(); $('studentListDialog').close(); };
   $('closeDetailsBtn').onclick=()=>$('eventDetailsDialog').close();
   $('editDetailsBtn').onclick=()=>{ const e=state.detailsEvent; $('eventDetailsDialog').close(); if(e) openDialog(e); };
@@ -417,9 +443,9 @@ function updateDuplicateWarning(){
 
 function fillPersonSelect(){ $('personSelect').innerHTML=Object.entries(PEOPLE).map(([k,p])=>`<option value="${k}">${p.label}</option>`).join(''); fillPresetSelect(); fillPalette(); }
 function fillPresetSelect(){ const p=$('personSelect').value||'donna'; $('presetSelect').innerHTML=PEOPLE[p].presets.map(x=>{ const c=PEOPLE[p].palette[PRESET_DEFAULT[x] ?? 0]; return `<option style="background:${c}">${x}</option>`; }).join(''); }
-function updateQuickAddVisibility(){ const row=$('studentQuickAddRow'); if(!row) return; const show=$('personSelect').value==='donna' && ['Lesson','No-show'].includes($('presetSelect').value); row.classList.toggle('hidden', !show); }
+function updateQuickAddVisibility(){ const row=$('studentQuickAddRow'); const hint=$('studentQuickAddHint'); if(!row) return; const show=$('personSelect').value==='donna'; row.classList.toggle('hidden', !show); if(hint) hint.classList.toggle('hidden', !show); }
 function applyStudentQuickAdd(name){ if(!name) return; const student=getStudentByName(name); $('eventTitle').value=name; $('personSelect').value='donna'; fillPresetSelect(); $('presetSelect').value='Lesson'; $('statusSelect').value='scheduled'; if(student){ const start=hmToMin($('startTime').value || '09:00'); $('endTime').value=minToHm(start + normalizeLessonMinutes(student.standard_lesson_minutes)); } state.selectedColor=PEOPLE.donna.palette[PRESET_DEFAULT.Lesson]; fillPalette(); updateQuickAddVisibility(); updateDuplicateWarning(); }
-function openStudentListDialog(){ state.studentList=normalizeStudentList(state.studentList); $('semesterNameInput').value=state.studentList.group || defaultStudentGroupName(); $('studentNamesInput').value=(state.studentList.students||[]).map(formatStudentLine).join('\n'); $('studentListDialog').showModal(); }
+function openStudentListDialog(){ state.studentList=normalizeStudentList(state.studentList); $('semesterNameInput').value=state.studentList.group || defaultStudentGroupName(); renderStudentEditorRows(); $('studentListDialog').showModal(); }
 function fillPalette(){ const p=$('personSelect').value||'donna'; $('colorPalette').innerHTML=''; PEOPLE[p].palette.forEach(c=>{ const b=document.createElement('button'); b.type='button'; b.className='color-swatch'+(c===state.selectedColor?' selected':''); b.style.background=c; b.title=c; b.onclick=()=>{ state.selectedColor=c; fillPalette(); }; $('colorPalette').appendChild(b); }); }
 
 function expandEventsForRange(rangeStart, rangeDays){
