@@ -112,12 +112,13 @@ create policy tod_donna_calendar_event_exceptions_all on public.tod_donna_calend
 drop policy if exists tod_donna_calendar_import_log_all on public.tod_donna_calendar_import_log;
 create policy tod_donna_calendar_import_log_all on public.tod_donna_calendar_import_log for all using (true) with check (true);
 
--- V1.21: active Donna student quick-add list
+-- V1.22: active Donna student quick-add list with standard lesson time
 -- Project-scoped table name avoids collisions with other Supabase projects.
 create table if not exists public.tod_donna_calendar_active_students (
   id uuid primary key default gen_random_uuid(),
   student_group text not null default 'Active Students',
   student_name text not null,
+  standard_lesson_minutes integer not null default 30 check (standard_lesson_minutes in (30, 60)),
   sort_order integer not null default 0,
   is_active boolean not null default true,
   created_at timestamptz not null default now(),
@@ -129,8 +130,8 @@ create table if not exists public.tod_donna_calendar_active_students (
 do $$
 begin
   if to_regclass('public.tod_donna_calendar_student_quick_adds') is not null then
-    insert into public.tod_donna_calendar_active_students (student_group, student_name, sort_order, is_active)
-    select coalesce(nullif(semester_name,''),'Active Students'), student_name, sort_order, is_active
+    insert into public.tod_donna_calendar_active_students (student_group, student_name, standard_lesson_minutes, sort_order, is_active)
+    select coalesce(nullif(semester_name,''),'Active Students'), student_name, 30, sort_order, is_active
     from public.tod_donna_calendar_student_quick_adds
     where is_active = true
     on conflict (student_group, student_name) do update
@@ -154,3 +155,15 @@ drop trigger if exists tod_donna_calendar_active_students_touch_updated_at on pu
 create trigger tod_donna_calendar_active_students_touch_updated_at
 before update on public.tod_donna_calendar_active_students
 for each row execute function public.tod_donna_calendar_touch_updated_at();
+
+
+-- V1.22 migration for projects that already created the V1.21 table.
+alter table public.tod_donna_calendar_active_students
+  add column if not exists standard_lesson_minutes integer not null default 30;
+
+alter table public.tod_donna_calendar_active_students
+  drop constraint if exists tod_donna_calendar_active_students_standard_lesson_minutes_check;
+
+alter table public.tod_donna_calendar_active_students
+  add constraint tod_donna_calendar_active_students_standard_lesson_minutes_check
+  check (standard_lesson_minutes in (30, 60));

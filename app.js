@@ -7,7 +7,7 @@ const PEOPLE = {
 const PRESET_DEFAULT = { Class:0, Lesson:1, Rehearsal:2, Meeting:3, Performance:4, 'No-show':6, Event:2, Doctor:0, Hair:1, Church:6, Appointment:2, Camping:0, Roadtrip:3, Shopping:1, Friends:4, Family:2, Other:7 };
 const START_HOUR = 7;
 const END_HOUR = 22;
-let state = { weekStart: startOfWeek(new Date()), filter:'all', events:[], studentList:{ group: defaultStudentGroupName(), names:[] }, selectedColor:'#c8dff0', supabase:null, storageMode:'local', focusDate:null, detailsEvent:null, pendingScrollDate:isoDate(new Date()), adjustingScroll:false, viewMode:'week' };
+let state = { weekStart: startOfWeek(new Date()), filter:'all', events:[], studentList:{ group: defaultStudentGroupName(), students:[], names:[] }, selectedColor:'#c8dff0', supabase:null, storageMode:'local', focusDate:null, detailsEvent:null, pendingScrollDate:isoDate(new Date()), adjustingScroll:false, viewMode:'week' };
 
 const $ = id => document.getElementById(id);
 function startOfWeek(d){ const x=new Date(d); x.setHours(0,0,0,0); const day=x.getDay(); const diff=(day+6)%7; x.setDate(x.getDate()-diff); return x; }
@@ -20,6 +20,35 @@ function fmtDay(d){ return d.toLocaleDateString(undefined,{weekday:'short'}); }
 function fmtTime(hm){ const [h,m]=hm.split(':').map(Number); const suffix=h>=12?'pm':'am'; const hr=((h+11)%12)+1; return `${hr}:${String(m).padStart(2,'0')}${suffix}`; }
 function uuid(){ return crypto.randomUUID ? crypto.randomUUID() : 'id-'+Date.now()+'-'+Math.random().toString(16).slice(2); }
 function defaultStudentGroupName(){ return 'Active Students'; }
+function normalizeLessonMinutes(value){ const n=Number(value); return [30,60].includes(n) ? n : 30; }
+function normalizeStudentList(list){
+  const group=(list?.group || list?.semester || defaultStudentGroupName()).trim() || defaultStudentGroupName();
+  const rawStudents=Array.isArray(list?.students) && list.students.length
+    ? list.students
+    : (Array.isArray(list?.names) ? list.names.map(name=>({ name, standard_lesson_minutes:30 })) : []);
+  const seen=new Set();
+  const students=[];
+  for(const item of rawStudents){
+    const name=String(item?.name ?? item?.student_name ?? item ?? '').trim();
+    if(!name) continue;
+    const key=name.toLowerCase();
+    if(seen.has(key)) continue;
+    seen.add(key);
+    students.push({ name, standard_lesson_minutes: normalizeLessonMinutes(item?.standard_lesson_minutes ?? item?.lesson_minutes ?? item?.minutes ?? 30) });
+  }
+  students.sort((a,b)=>a.name.localeCompare(b.name));
+  return { group, students, names: students.map(s=>s.name) };
+}
+function parseStudentLine(line){
+  const raw=String(line||'').trim();
+  if(!raw) return null;
+  const parts=raw.split(/\s*[|,\t]\s*/).filter(Boolean);
+  const name=(parts[0]||'').trim();
+  const minutes=normalizeLessonMinutes(parts[1] || 30);
+  return name ? { name, standard_lesson_minutes: minutes } : null;
+}
+function formatStudentLine(student){ return `${student.name} | ${normalizeLessonMinutes(student.standard_lesson_minutes)}`; }
+function getStudentByName(name){ const key=String(name||'').toLowerCase(); return (state.studentList.students||[]).find(s=>s.name.toLowerCase()===key); }
 
 async function init(){
   document.body.classList.add('zoom-compact');
@@ -71,10 +100,10 @@ async function loadStudentList(){
   const fallback = () => {
     const saved = localStorage.getItem('tod_donna_calendar_active_students_v1') || localStorage.getItem('tod_donna_calendar_student_list_v1');
     if(saved){
-      try { state.studentList = JSON.parse(saved); if(state.studentList.semester && !state.studentList.group) state.studentList.group = state.studentList.semester; }
-      catch { state.studentList = { group: defaultStudentGroupName(), names: [] }; }
+      try { state.studentList = normalizeStudentList(JSON.parse(saved)); }
+      catch { state.studentList = normalizeStudentList({ group: defaultStudentGroupName(), students: [] }); }
     } else {
-      state.studentList = buildStudentListFromEvents(seedEvents());
+      state.studentList = normalizeStudentList(buildStudentListFromEvents(seedEvents()));
       saveStudentListLocal();
     }
     fillStudentQuickAddSelect();
@@ -86,10 +115,10 @@ async function loadStudentList(){
       .eq('is_active', true)
       .order('sort_order');
     if(!error && data?.length){
-      state.studentList = {
+      state.studentList = normalizeStudentList({
         group: data[0].student_group || defaultStudentGroupName(),
-        names: data.map(r => r.student_name).filter(Boolean)
-      };
+        students: data.map(r => ({ name:r.student_name, standard_lesson_minutes:r.standard_lesson_minutes }))
+      });
       saveStudentListLocal();
       fillStudentQuickAddSelect();
       return;
@@ -105,9 +134,9 @@ function buildStudentListFromEvents(events){
     .map(e => String(e.title || '').replace(/^No\s+/i,'').trim())
     .filter(x => x && !excluded.has(x.toLowerCase())))]
     .sort((a,b)=>a.localeCompare(b));
-  return { group: defaultStudentGroupName(), names };
+  return { group: defaultStudentGroupName(), students: names.map(name=>({ name, standard_lesson_minutes:30 })), names };
 }
-function saveStudentListLocal(){ localStorage.setItem('tod_donna_calendar_active_students_v1', JSON.stringify(state.studentList)); }
+function saveStudentListLocal(){ state.studentList=normalizeStudentList(state.studentList); localStorage.setItem('tod_donna_calendar_active_students_v1', JSON.stringify(state.studentList)); }
 async function saveStudentList(){
   state.studentList.group = ($('semesterNameInput')?.value || defaultStudentGroupName()).trim() || defaultStudentGroupName();
   state.studentList.names = ($('studentNamesInput')?.value || '')
@@ -121,9 +150,9 @@ async function saveStudentList(){
     const group = state.studentList.group;
     await state.supabase.from('tod_donna_calendar_active_students').update({ is_active:false }).eq('is_active', true);
     await state.supabase.from('tod_donna_calendar_active_students').delete().eq('student_group', group);
-    if(state.studentList.names.length){
-      const rows = state.studentList.names.map((name,idx)=>({
-        id: uuid(), student_group: group, student_name: name, sort_order: idx, is_active: true
+    if(state.studentList.students.length){
+      const rows = state.studentList.students.map((student,idx)=>({
+        id: uuid(), student_group: group, student_name: student.name, standard_lesson_minutes: normalizeLessonMinutes(student.standard_lesson_minutes), sort_order: idx, is_active: true
       }));
       await state.supabase.from('tod_donna_calendar_active_students').upsert(rows);
     }
@@ -134,7 +163,7 @@ function fillStudentQuickAddSelect(){
   const sel = $('studentQuickAddSelect');
   if(!sel) return;
   const label = state.studentList?.group ? `Choose student… (${state.studentList.group})` : 'Choose student…';
-  sel.innerHTML = `<option value="">${escapeHtml(label)}</option>` + (state.studentList.names || []).map(n=>`<option value="${escapeHtml(n)}">${escapeHtml(n)}</option>`).join('');
+  sel.innerHTML = `<option value="">${escapeHtml(label)}</option>` + (state.studentList.students || []).map(s=>`<option value="${escapeHtml(s.name)}">${escapeHtml(s.name)} · ${normalizeLessonMinutes(s.standard_lesson_minutes)} min</option>`).join('');
 }
 
 function fromDb(r){
@@ -389,8 +418,8 @@ function updateDuplicateWarning(){
 function fillPersonSelect(){ $('personSelect').innerHTML=Object.entries(PEOPLE).map(([k,p])=>`<option value="${k}">${p.label}</option>`).join(''); fillPresetSelect(); fillPalette(); }
 function fillPresetSelect(){ const p=$('personSelect').value||'donna'; $('presetSelect').innerHTML=PEOPLE[p].presets.map(x=>{ const c=PEOPLE[p].palette[PRESET_DEFAULT[x] ?? 0]; return `<option style="background:${c}">${x}</option>`; }).join(''); }
 function updateQuickAddVisibility(){ const row=$('studentQuickAddRow'); if(!row) return; const show=$('personSelect').value==='donna' && ['Lesson','No-show'].includes($('presetSelect').value); row.classList.toggle('hidden', !show); }
-function applyStudentQuickAdd(name){ if(!name) return; $('eventTitle').value=name; $('personSelect').value='donna'; fillPresetSelect(); $('presetSelect').value='Lesson'; $('statusSelect').value='scheduled'; state.selectedColor=PEOPLE.donna.palette[PRESET_DEFAULT.Lesson]; fillPalette(); updateQuickAddVisibility(); updateDuplicateWarning(); }
-function openStudentListDialog(){ $('semesterNameInput').value=state.studentList.group || defaultStudentGroupName(); $('studentNamesInput').value=(state.studentList.names||[]).join('\n'); $('studentListDialog').showModal(); }
+function applyStudentQuickAdd(name){ if(!name) return; const student=getStudentByName(name); $('eventTitle').value=name; $('personSelect').value='donna'; fillPresetSelect(); $('presetSelect').value='Lesson'; $('statusSelect').value='scheduled'; if(student){ const start=hmToMin($('startTime').value || '09:00'); $('endTime').value=minToHm(start + normalizeLessonMinutes(student.standard_lesson_minutes)); } state.selectedColor=PEOPLE.donna.palette[PRESET_DEFAULT.Lesson]; fillPalette(); updateQuickAddVisibility(); updateDuplicateWarning(); }
+function openStudentListDialog(){ state.studentList=normalizeStudentList(state.studentList); $('semesterNameInput').value=state.studentList.group || defaultStudentGroupName(); $('studentNamesInput').value=(state.studentList.students||[]).map(formatStudentLine).join('\n'); $('studentListDialog').showModal(); }
 function fillPalette(){ const p=$('personSelect').value||'donna'; $('colorPalette').innerHTML=''; PEOPLE[p].palette.forEach(c=>{ const b=document.createElement('button'); b.type='button'; b.className='color-swatch'+(c===state.selectedColor?' selected':''); b.style.background=c; b.title=c; b.onclick=()=>{ state.selectedColor=c; fillPalette(); }; $('colorPalette').appendChild(b); }); }
 
 function expandEventsForRange(rangeStart, rangeDays){
