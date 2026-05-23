@@ -984,3 +984,13 @@ html, body {
   .quick-add-row button{width:100%;}
   .student-editor-head,.student-row{grid-template-columns:minmax(0,1fr) 84px 30px;gap:.28rem;}
 }
+.category-memory-hint{
+  margin:.15rem 0 .35rem;
+  font-size:.78rem;
+  color:#315843;
+  background:#e9f5ed;
+  border:1px solid #c5e3cf;
+  border-radius:.45rem;
+  padding:.35rem .5rem;
+}
+.category-memory-hint.hidden{display:none;}
