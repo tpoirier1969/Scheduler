@@ -167,32 +167,3 @@ alter table public.tod_donna_calendar_active_students
 alter table public.tod_donna_calendar_active_students
   add constraint tod_donna_calendar_active_students_standard_lesson_minutes_check
   check (standard_lesson_minutes in (30, 60));
-
--- V1.25: remembered category choices by title/name pattern.
--- Project-scoped table name avoids collisions with other Supabase projects.
-create table if not exists public.tod_donna_calendar_category_memory (
-  title_key text primary key,
-  sample_title text not null,
-  person_key text not null references public.tod_donna_calendar_people(person_key),
-  preset_name text not null,
-  color_hex text,
-  created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now()
-);
-
-create index if not exists tod_donna_calendar_category_memory_person_idx
-  on public.tod_donna_calendar_category_memory (person_key, preset_name);
-
-alter table public.tod_donna_calendar_category_memory enable row level security;
-
-drop policy if exists tod_donna_calendar_category_memory_all on public.tod_donna_calendar_category_memory;
-create policy tod_donna_calendar_category_memory_all
-  on public.tod_donna_calendar_category_memory
-  for all
-  using (true)
-  with check (true);
-
-drop trigger if exists tod_donna_calendar_category_memory_touch_updated_at on public.tod_donna_calendar_category_memory;
-create trigger tod_donna_calendar_category_memory_touch_updated_at
-before update on public.tod_donna_calendar_category_memory
-for each row execute function public.tod_donna_calendar_touch_updated_at();

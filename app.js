@@ -7,7 +7,7 @@ const PEOPLE = {
 const PRESET_DEFAULT = { Class:0, Lesson:1, Rehearsal:2, Meeting:3, Performance:4, 'No-show':6, Event:2, Doctor:0, Hair:1, Church:6, Appointment:2, Camping:0, Roadtrip:3, Shopping:1, Friends:4, Family:2, Other:7 };
 const START_HOUR = 7;
 const END_HOUR = 22;
-let state = { weekStart: startOfWeek(new Date()), filter:'all', events:[], studentList:{ group: defaultStudentGroupName(), students:[], names:[] }, categoryMemory:[], selectedColor:'#c8dff0', supabase:null, storageMode:'local', focusDate:null, detailsEvent:null, pendingScrollDate:isoDate(new Date()), adjustingScroll:false, viewMode:'week', categoryManuallyChanged:false };
+let state = { weekStart: startOfWeek(new Date()), filter:'all', events:[], studentList:{ group: defaultStudentGroupName(), students:[], names:[] }, selectedColor:'#c8dff0', supabase:null, storageMode:'local', focusDate:null, detailsEvent:null, pendingScrollDate:isoDate(new Date()), adjustingScroll:false, viewMode:'week' };
 
 const $ = id => document.getElementById(id);
 function startOfWeek(d){ const x=new Date(d); x.setHours(0,0,0,0); const day=x.getDay(); const diff=(day+6)%7; x.setDate(x.getDate()-diff); return x; }
@@ -50,73 +50,6 @@ function parseStudentLine(line){
 function formatStudentLine(student){ return `${student.name} | ${normalizeLessonMinutes(student.standard_lesson_minutes)}`; }
 function getStudentByName(name){ const key=String(name||'').toLowerCase(); return (state.studentList.students||[]).find(s=>s.name.toLowerCase()===key); }
 
-function normalizeCategoryMemoryKey(title){
-  return String(title||'').toLowerCase().replace(/^no\s+/,'').replace(/[^a-z0-9]+/g,' ').trim().slice(0,80);
-}
-function normalizeCategoryMemoryRows(rows){
-  const seen=new Set();
-  const out=[];
-  for(const r of rows||[]){
-    const title_key=normalizeCategoryMemoryKey(r.title_key || r.title_pattern || r.sample_title || r.title || '');
-    const person_key = PEOPLE[r.person_key] ? r.person_key : 'donna';
-    const preset_name = PEOPLE[person_key].presets.includes(r.preset_name) ? r.preset_name : PEOPLE[person_key].presets[0];
-    if(!title_key) continue;
-    if(seen.has(title_key)) continue;
-    seen.add(title_key);
-    out.push({ title_key, sample_title:r.sample_title || r.title_key || title_key, person_key, preset_name, color_hex:r.color_hex || PEOPLE[person_key].palette[PRESET_DEFAULT[preset_name] ?? 0] });
-  }
-  return out;
-}
-async function loadCategoryMemory(){
-  const fallback=()=>{
-    try { state.categoryMemory=normalizeCategoryMemoryRows(JSON.parse(localStorage.getItem('tod_donna_calendar_category_memory_v1')||'[]')); }
-    catch { state.categoryMemory=[]; }
-  };
-  if(state.storageMode==='supabase'){
-    const { data, error } = await state.supabase.from('tod_donna_calendar_category_memory').select('*').order('updated_at', { ascending:false });
-    if(!error && data){
-      state.categoryMemory=normalizeCategoryMemoryRows(data);
-      localStorage.setItem('tod_donna_calendar_category_memory_v1', JSON.stringify(state.categoryMemory));
-      return;
-    }
-    if(error) console.warn('Category memory table unavailable; using local category memory.', error.message || error);
-  }
-  fallback();
-}
-function findCategoryMemory(title){
-  const key=normalizeCategoryMemoryKey(title);
-  if(!key) return null;
-  return state.categoryMemory.find(r=>r.title_key===key) || null;
-}
-function applyCategoryMemoryFromTitle(force=false){
-  const title=$('eventTitle')?.value || '';
-  const hit=findCategoryMemory(title);
-  const hint=$('categoryMemoryHint');
-  if(!hit){ if(hint){ hint.classList.add('hidden'); hint.textContent=''; } return; }
-  if(force || !state.categoryManuallyChanged){
-    $('personSelect').value=hit.person_key;
-    fillPresetSelect();
-    $('presetSelect').value=hit.preset_name;
-    state.selectedColor=hit.color_hex || PEOPLE[hit.person_key].palette[PRESET_DEFAULT[hit.preset_name] ?? 0];
-    fillPalette();
-    updateQuickAddVisibility();
-  }
-  if(hint){
-    hint.classList.remove('hidden');
-    hint.textContent=`Remembered category: ${PEOPLE[hit.person_key].label} / ${hit.preset_name}`;
-  }
-}
-async function rememberCategoryForEvent(e){
-  const title_key=normalizeCategoryMemoryKey(e.title);
-  if(!title_key || !PEOPLE[e.person_key]) return;
-  const row={ title_key, sample_title:e.title, person_key:e.person_key, preset_name:e.preset_name, color_hex:e.color || PEOPLE[e.person_key].palette[PRESET_DEFAULT[e.preset_name] ?? 0] };
-  state.categoryMemory=normalizeCategoryMemoryRows([row, ...state.categoryMemory.filter(r=>r.title_key!==title_key)]);
-  localStorage.setItem('tod_donna_calendar_category_memory_v1', JSON.stringify(state.categoryMemory));
-  if(state.storageMode==='supabase'){
-    await state.supabase.from('tod_donna_calendar_category_memory').upsert(row, { onConflict:'title_key' });
-  }
-}
-
 async function init(){
   document.body.classList.add('zoom-compact');
   setupSupabase();
@@ -126,7 +59,6 @@ async function init(){
   setupNoShowContextClose();
   fillPersonSelect();
   await loadStudentList();
-  await loadCategoryMemory();
   await loadEvents();
   focusTodayOnLaunch();
   render();
@@ -302,10 +234,10 @@ function setupControls(){
   $('calendarSelect').onchange=e=>{ state.filter=e.target.value; state.focusDate=null; document.body.classList.remove('focus-day'); closeToolbarMenu(); render(); };
   $('addEventBtn').onclick=()=>openDialog({date: firstVisibleRailDate ? firstVisibleRailDate() : isoDate(new Date()), start_time:'09:00', end_time:'09:30', person_key:'donna'});
   if($('studentsHeaderBtn')) $('studentsHeaderBtn').onclick=openStudentListDialog;
-  $('personSelect').onchange=()=>{ state.categoryManuallyChanged=true; fillPresetSelect(); fillPalette(); updateQuickAddVisibility(); updateDuplicateWarning(); };
-  $('presetSelect').onchange=()=>{ state.categoryManuallyChanged=true; const p=$('personSelect').value, preset=$('presetSelect').value; const idx=PRESET_DEFAULT[preset] ?? 0; state.selectedColor=PEOPLE[p].palette[idx]; fillPalette(); if(preset==='No-show') $('statusSelect').value='no_show'; updateQuickAddVisibility(); updateDuplicateWarning(); };
+  $('personSelect').onchange=()=>{ fillPresetSelect(); fillPalette(); updateQuickAddVisibility(); };
+  $('presetSelect').onchange=()=>{ const p=$('personSelect').value, preset=$('presetSelect').value; const idx=PRESET_DEFAULT[preset] ?? 0; state.selectedColor=PEOPLE[p].palette[idx]; fillPalette(); if(preset==='No-show') $('statusSelect').value='no_show'; updateQuickAddVisibility(); };
   $('repeatToggle').onchange=e=>$('repeatControls').classList.toggle('hidden', !e.target.checked);
-  ['eventTitle','eventDate','startTime','endTime','personSelect'].forEach(id=>{ const el=$(id); if(el) el.addEventListener('input', ()=>{ if(id==='eventTitle') applyCategoryMemoryFromTitle(false); updateDuplicateWarning(); }); if(el) el.addEventListener('change', ()=>{ if(id==='eventTitle') applyCategoryMemoryFromTitle(false); updateDuplicateWarning(); }); });
+  ['eventTitle','eventDate','startTime','endTime','personSelect'].forEach(id=>{ const el=$(id); if(el) el.addEventListener('input', updateDuplicateWarning); if(el) el.addEventListener('change', updateDuplicateWarning); });
   $('saveEventBtn').onclick=async ev=>{ ev.preventDefault(); await submitForm(); };
   $('deleteEventBtn').onclick=async()=>{ const id=$('eventId').value; if(id){ await deleteEvent(id); $('eventDialog').close(); render(); } };
   $('cancelEventBtn').onclick=()=>{$('eventDialog').close();};
@@ -542,7 +474,7 @@ function updateDuplicateWarning(){
 function fillPersonSelect(){ $('personSelect').innerHTML=Object.entries(PEOPLE).map(([k,p])=>`<option value="${k}">${p.label}</option>`).join(''); fillPresetSelect(); fillPalette(); }
 function fillPresetSelect(){ const p=$('personSelect').value||'donna'; $('presetSelect').innerHTML=PEOPLE[p].presets.map(x=>{ const c=PEOPLE[p].palette[PRESET_DEFAULT[x] ?? 0]; return `<option style="background:${c}">${x}</option>`; }).join(''); }
 function updateQuickAddVisibility(){ const row=$('studentQuickAddRow'); const hint=$('studentQuickAddHint'); if(!row) return; const show=$('personSelect').value==='donna'; row.classList.toggle('hidden', !show); if(hint) hint.classList.toggle('hidden', !show); }
-function applyStudentQuickAdd(name){ if(!name) return; const student=getStudentByName(name); state.categoryManuallyChanged=true; $('eventTitle').value=name; $('personSelect').value='donna'; fillPresetSelect(); $('presetSelect').value='Lesson'; $('statusSelect').value='scheduled'; if(student){ const start=hmToMin($('startTime').value || '09:00'); $('endTime').value=minToHm(start + normalizeLessonMinutes(student.standard_lesson_minutes)); } state.selectedColor=PEOPLE.donna.palette[PRESET_DEFAULT.Lesson]; fillPalette(); updateQuickAddVisibility(); updateDuplicateWarning(); const hint=$('categoryMemoryHint'); if(hint){ hint.classList.remove('hidden'); hint.textContent='Student quick-add selected: Donna / Lesson'; } }
+function applyStudentQuickAdd(name){ if(!name) return; const student=getStudentByName(name); $('eventTitle').value=name; $('personSelect').value='donna'; fillPresetSelect(); $('presetSelect').value='Lesson'; $('statusSelect').value='scheduled'; if(student){ const start=hmToMin($('startTime').value || '09:00'); $('endTime').value=minToHm(start + normalizeLessonMinutes(student.standard_lesson_minutes)); } state.selectedColor=PEOPLE.donna.palette[PRESET_DEFAULT.Lesson]; fillPalette(); updateQuickAddVisibility(); updateDuplicateWarning(); }
 function openStudentListDialog(){ state.studentList=normalizeStudentList(state.studentList); $('semesterNameInput').value=state.studentList.group || defaultStudentGroupName(); renderStudentEditorRows(); $('studentListDialog').showModal(); }
 function fillPalette(){ const p=$('personSelect').value||'donna'; $('colorPalette').innerHTML=''; PEOPLE[p].palette.forEach(c=>{ const b=document.createElement('button'); b.type='button'; b.className='color-swatch'+(c===state.selectedColor?' selected':''); b.style.background=c; b.title=c; b.onclick=()=>{ state.selectedColor=c; fillPalette(); }; $('colorPalette').appendChild(b); }); }
 
@@ -768,7 +700,7 @@ function openDetails(e){
       <label class="detail-check cancel-check"><input id="detailCancelCheck" type="checkbox" ${e.status==='cancelled'?'checked':''} /> Cancelled</label>
     </div>
     <div class="detail-row"><span class="detail-label">Person</span><span>${escapeHtml(person)}</span></div>
-    <div class="detail-row"><span class="detail-label">Category</span><span><span class="detail-chip" style="background:${escapeHtml(e.color||'#ddd')}">${escapeHtml(e.preset_name||'')}</span></span></div>
+    <div class="detail-row"><span class="detail-label">Preset</span><span><span class="detail-chip" style="background:${escapeHtml(e.color||'#ddd')}">${escapeHtml(e.preset_name||'')}</span></span></div>
     <div class="detail-row"><span class="detail-label">Date</span><span>${escapeHtml(e.date)}</span></div>
     <div class="detail-row"><span class="detail-label">Time</span><span>${fmtTime(e.start_time)}–${fmtTime(e.end_time)}</span></div>
     <div class="detail-row"><span class="detail-label">Status</span><span>${escapeHtml(status)}</span></div>
@@ -781,17 +713,15 @@ function openDetails(e){
   if(cc) cc.onchange=ev=>setDetailsStatusFlag('cancelled', ev.target.checked);
 }
 function openDialog(e){
-  state.categoryManuallyChanged=!!e.id;
   $('dialogTitle').textContent=e.id?'Edit':'+ Add'; $('eventId').value=e.id||''; $('eventTitle').value=e.title||''; $('personSelect').value=e.person_key||'donna'; fillPresetSelect(); $('presetSelect').value=e.preset_name||PEOPLE[$('personSelect').value].presets[0];
   $('eventDate').value=e.date||isoDate(state.weekStart); $('startTime').value=e.start_time||'09:00'; $('endTime').value=e.end_time||'09:30'; $('statusSelect').value=e.status||'scheduled'; $('eventNotes').value=e.notes||''; state.selectedColor=e.color||PEOPLE[$('personSelect').value].palette[0]; fillPalette(); fillStudentQuickAddSelect(); if($('studentQuickAddSelect')) $('studentQuickAddSelect').value=''; updateQuickAddVisibility();
   $('repeatToggle').checked=!!e.recurrence_rule?.enabled; $('repeatControls').classList.toggle('hidden',!$('repeatToggle').checked); $('repeatFrequency').value=e.recurrence_rule?.frequency||'weekly'; $('repeatUntil').value=e.recurrence_rule?.until||''; document.querySelectorAll('.weekday-picker input').forEach(ch=>ch.checked=e.recurrence_rule?.days?.map(String).includes(ch.value)||false);
-  $('deleteEventBtn').classList.toggle('hidden',!e.id || e.recurring_instance); applyCategoryMemoryFromTitle(false); updateDuplicateWarning(); $('eventDialog').showModal(); setTimeout(()=>$('eventDialog').focus({preventScroll:true}), 0);
+  $('deleteEventBtn').classList.toggle('hidden',!e.id || e.recurring_instance); updateDuplicateWarning(); $('eventDialog').showModal(); setTimeout(()=>$('eventDialog').focus({preventScroll:true}), 0);
 }
 async function submitForm(){
   const rec=$('repeatToggle').checked ? { enabled:true, frequency:$('repeatFrequency').value, until:$('repeatUntil').value||null, days:[...document.querySelectorAll('.weekday-picker input:checked')].map(x=>Number(x.value)) } : null;
   const e={ id:$('eventId').value||uuid(), title:$('eventTitle').value.trim(), person_key:$('personSelect').value, preset_name:$('presetSelect').value, date:$('eventDate').value, start_time:$('startTime').value, end_time:$('endTime').value, status:$('statusSelect').value, color:state.selectedColor, notes:$('eventNotes').value.trim(), recurrence_rule:rec };
   if(hmToMin(e.end_time)<=hmToMin(e.start_time)){ alert('End time has to be after start time. Time goblin denied.'); return; }
-  await rememberCategoryForEvent(e);
   await saveEvent(e); $('eventDialog').close(); render();
 }
 function escapeHtml(s){ return String(s||'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
