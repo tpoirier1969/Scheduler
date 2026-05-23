@@ -60,6 +60,7 @@ async function init(){
   fillPersonSelect();
   await loadStudentList();
   await loadEvents();
+  focusTodayOnLaunch();
   render();
 }
 function setupSupabase(){
@@ -315,6 +316,35 @@ function scrollRailToDate(dateStr){
   grid.scrollLeft = Math.max(0, col.offsetLeft - 6);
   setTimeout(()=>{ state.adjustingScroll=false; updateVisibleRangeUI(); }, 120);
 }
+
+function focusTodayOnLaunch(){
+  const today = isoDate(new Date());
+  state.weekStart = startOfWeek(new Date(today + 'T00:00'));
+  state.focusDate = null;
+  state.viewMode = 'week';
+  state.pendingScrollDate = today;
+  document.body.classList.remove('month-view-active','focus-day');
+}
+function slotTimeFromPointer(ev, timeline){
+  const rect = timeline.getBoundingClientRect();
+  const styles = getComputedStyle(timeline);
+  const gutter = parseFloat(styles.getPropertyValue('--time-label-gutter')) || 0;
+  const hourHeight = parseFloat(styles.getPropertyValue('--hour-height')) || 64;
+  const rawY = ev.clientY - rect.top - gutter;
+  const rawMinutes = START_HOUR * 60 + (rawY / hourHeight) * 60;
+  const snapped = Math.round(rawMinutes / 30) * 30;
+  const min = START_HOUR * 60;
+  const max = END_HOUR * 60 - 30;
+  return minToHm(Math.max(min, Math.min(max, snapped)));
+}
+function openAddFromTimeline(ev, dateStr, timeline){
+  if(ev.target.closest('.event-block') || ev.target.closest('button')) return;
+  ev.preventDefault();
+  ev.stopPropagation();
+  const start = slotTimeFromPointer(ev, timeline);
+  const end = minToHm(Math.min(END_HOUR * 60, hmToMin(start) + 30));
+  openDialog({date:dateStr,start_time:start,end_time:end,person_key:'donna'});
+}
 function firstVisibleRailDate(){
   const grid=$('calendarGrid');
   if(!grid) return isoDate(state.weekStart);
@@ -551,6 +581,7 @@ function renderGrid(events){
     col.querySelector('.day-header').ondblclick=(ev)=>{ if(ev.target.closest('button')) return; state.focusDate = state.focusDate===ds ? null : ds; document.body.classList.toggle('focus-day', !!state.focusDate); render(); };
     col.querySelector('.add-day').onclick=()=>openDialog({date:ds,start_time:'09:00',end_time:'09:30',person_key:'donna'});
     const tl=col.querySelector('.day-timeline');
+    tl.addEventListener('click', ev=>openAddFromTimeline(ev, ds, tl));
     for(let h=START_HOUR; h<=END_HOUR; h++){ const lab=document.createElement('div'); lab.className='time-label'; lab.style.top = `calc(var(--time-label-gutter) + ${h-START_HOUR} * var(--hour-height))`; lab.textContent=fmtTime(String(h).padStart(2,'0')+':00'); tl.appendChild(lab); }
     const dayEvents=events.filter(e=>e.date===ds).sort((a,b)=>hmToMin(a.start_time)-hmToMin(b.start_time)); assignOverlapLanes(dayEvents).forEach(e=>tl.appendChild(eventEl(e)));
     grid.appendChild(col);
