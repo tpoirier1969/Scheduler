@@ -230,6 +230,8 @@ function setupControls(){
   $('weekRangeBtn').onclick=()=>toggleToolbarMenu();
   $('navMenuBtn').onclick=()=>toggleToolbarMenu();
   $('weekPicker').onchange=e=>{ if(e.target.value){ state.weekStart=startOfWeek(new Date(e.target.value+'T00:00')); state.viewMode='week'; document.body.classList.remove('month-view-active'); closeToolbarMenu(); render(); } };
+  if($('eventDateButton')) $('eventDateButton').onclick=openEventDatePicker;
+  if($('eventDate')) $('eventDate').addEventListener('change', updateEventDateButton);
   $('zoomSelect').onchange=e=>{ document.body.classList.remove('zoom-compact','zoom-detailed'); document.body.classList.add('zoom-'+e.target.value); };
   $('calendarSelect').onchange=e=>{ state.filter=e.target.value; state.focusDate=null; document.body.classList.remove('focus-day'); closeToolbarMenu(); render(); };
   $('addEventBtn').onclick=()=>openDialog({date: firstVisibleRailDate ? firstVisibleRailDate() : isoDate(new Date()), start_time:'09:00', end_time:'09:30', person_key:'donna'});
@@ -258,6 +260,27 @@ function closeToolbarMenu(){ const tb=document.querySelector('.toolbar'); if(tb)
 function toggleMonthView(){ state.viewMode = state.viewMode==='month' ? 'week' : 'month'; document.body.classList.toggle('month-view-active', state.viewMode==='month'); closeToolbarMenu(); render(); }
 function visibleRangeStart(){ return isScrollableDayRail() ? new Date((firstVisibleRailDate() || isoDate(state.weekStart))+'T00:00') : state.weekStart; }
 function monthTitle(d){ return d.toLocaleDateString(undefined,{month:'long',year:'numeric'}); }
+function dialogDateText(dateStr){
+  if(!dateStr) return 'Pick date';
+  const d=new Date(dateStr+'T00:00');
+  if(Number.isNaN(d.getTime())) return 'Pick date';
+  return d.toLocaleDateString(undefined,{weekday:'short', month:'short', day:'numeric'});
+}
+function updateEventDateButton(){
+  const btn=$('eventDateButton');
+  const input=$('eventDate');
+  if(btn && input) btn.textContent=dialogDateText(input.value);
+}
+function openEventDatePicker(){
+  const input=$('eventDate');
+  if(!input) return;
+  input.removeAttribute('aria-hidden');
+  if(typeof input.showPicker === 'function'){
+    try { input.showPicker(); return; } catch(err) {}
+  }
+  input.focus({preventScroll:true});
+  input.click();
+}
 function shiftVisibleRange(direction){
   if(state.viewMode==='month'){ const d=new Date(state.weekStart); d.setDate(1); d.setMonth(d.getMonth()+direction); state.weekStart=startOfWeek(d); return; }
   state.weekStart=addDays(state.weekStart, direction*7);
@@ -716,7 +739,7 @@ function openDialog(e){
   $('dialogTitle').textContent=e.id?'Edit':'+ Add'; $('eventId').value=e.id||''; $('eventTitle').value=e.title||''; $('personSelect').value=e.person_key||'donna'; fillPresetSelect(); $('presetSelect').value=e.preset_name||PEOPLE[$('personSelect').value].presets[0];
   $('eventDate').value=e.date||isoDate(state.weekStart); $('startTime').value=e.start_time||'09:00'; $('endTime').value=e.end_time||'09:30'; $('statusSelect').value=e.status||'scheduled'; $('eventNotes').value=e.notes||''; state.selectedColor=e.color||PEOPLE[$('personSelect').value].palette[0]; fillPalette(); fillStudentQuickAddSelect(); if($('studentQuickAddSelect')) $('studentQuickAddSelect').value=''; updateQuickAddVisibility();
   $('repeatToggle').checked=!!e.recurrence_rule?.enabled; $('repeatControls').classList.toggle('hidden',!$('repeatToggle').checked); $('repeatFrequency').value=e.recurrence_rule?.frequency||'weekly'; $('repeatUntil').value=e.recurrence_rule?.until||''; document.querySelectorAll('.weekday-picker input').forEach(ch=>ch.checked=e.recurrence_rule?.days?.map(String).includes(ch.value)||false);
-  $('deleteEventBtn').classList.toggle('hidden',!e.id || e.recurring_instance); updateDuplicateWarning(); $('eventDialog').showModal(); setTimeout(()=>$('eventDialog').focus({preventScroll:true}), 0);
+  $('deleteEventBtn').classList.toggle('hidden',!e.id || e.recurring_instance); updateEventDateButton(); updateDuplicateWarning(); $('eventDialog').showModal(); setTimeout(()=>$('eventDialog').focus({preventScroll:true}), 0);
 }
 async function submitForm(){
   const rec=$('repeatToggle').checked ? { enabled:true, frequency:$('repeatFrequency').value, until:$('repeatUntil').value||null, days:[...document.querySelectorAll('.weekday-picker input:checked')].map(x=>Number(x.value)) } : null;
