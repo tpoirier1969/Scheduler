@@ -7,7 +7,7 @@
   <link rel="icon" href="our-scheduler-icon.svg?v=1.16" type="image/svg+xml" />
   <link rel="apple-touch-icon" href="our-scheduler-icon-180.png?v=1.16" />
   <link rel="manifest" href="manifest.webmanifest?v=1.16" />
-  <link rel="stylesheet" href="styles.css?v=1.26" />
+  <link rel="stylesheet" href="styles.css?v=1.29" />
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="config.js?v=1.5"></script>
 </head>
@@ -17,7 +17,7 @@
       <img src="our-scheduler-icon.svg?v=1.16" alt="" class="app-icon" />
       <div>
         <h1>Our Scheduler</h1>
-        <p class="version">V1.28 · shared weekly planner</p>
+        <p class="version">V1.29 · shared weekly planner</p>
       </div>
     </div>
     <div class="header-actions"><button id="studentsHeaderBtn" class="secondary compact-add" type="button">Students</button><button id="addEventBtn" class="primary compact-add">+ Add</button></div>
@@ -101,7 +101,8 @@
           <select id="presetSelect"></select>
         </label>
       </div>
-      <div class="form-row two-col">
+      <label class="all-day-toggle"><input id="allDayCheck" type="checkbox" /> All-day event</label>
+      <div id="timeRow" class="form-row two-col">
         <label>Start <input id="startTime" type="time" step="1800" required /></label>
         <label>End <input id="endTime" type="time" step="1800" required /></label>
       </div>
@@ -177,6 +178,6 @@
     </form>
   </dialog>
   <script src="seed-events.js?v=1.5"></script>
-  <script src="app.js?v=1.28"></script>
+  <script src="app.js?v=1.29"></script>
 </body>
 </html>

@@ -5,7 +5,7 @@ const PEOPLE = {
   shared: { label: 'Shared', palette: ['#b7d4c5', '#e3c97f', '#c79c8a', '#9eb7c7', '#d3b4c6', '#c8c3a2', '#f0cfa8', '#a8bfa0'], presets: ['Camping','Roadtrip','Shopping','Friends','Family','Other'] }
 };
 const PRESET_DEFAULT = { Class:0, Lesson:1, Rehearsal:2, Meeting:3, Performance:4, 'No-show':6, Event:2, Doctor:0, Hair:1, Church:6, Appointment:2, Camping:0, Roadtrip:3, Shopping:1, Friends:4, Family:2, Other:7 };
-const START_HOUR = 7;
+const START_HOUR = 6;
 const END_HOUR = 22;
 let state = { weekStart: startOfWeek(new Date()), filter:'all', events:[], studentList:{ group: defaultStudentGroupName(), students:[], names:[] }, selectedColor:'#c8dff0', supabase:null, storageMode:'local', focusDate:null, detailsEvent:null, pendingScrollDate:isoDate(new Date()), adjustingScroll:false, viewMode:'week' };
 
@@ -262,10 +262,10 @@ function fillStudentQuickAddSelect(){
 }
 
 function fromDb(r){
-  return { id:r.id, title:r.title, person_key:r.person_key, preset_name:r.preset_name, status:r.status, date:r.event_date, start_time:r.start_time.slice(0,5), end_time:r.end_time.slice(0,5), notes:r.notes||'', color:r.color_hex, recurrence_rule:r.recurrence_rule, imported:r.imported_source?true:false };
+  return { id:r.id, title:r.title, person_key:r.person_key, preset_name:r.preset_name, status:r.status, date:r.event_date, start_time:(r.start_time||'00:00').slice(0,5), end_time:(r.end_time||'23:59').slice(0,5), is_all_day:!!r.is_all_day, notes:r.notes||'', color:r.color_hex, recurrence_rule:r.recurrence_rule, imported:r.imported_source?true:false };
 }
 function toDb(e){
-  return { id:e.id, title:e.title, person_key:e.person_key, preset_name:e.preset_name, status:e.status, event_date:e.date, start_time:e.start_time, end_time:e.end_time, notes:e.notes, color_hex:e.color, recurrence_rule:e.recurrence_rule, imported_source:e.source||null };
+  return { id:e.id, title:e.title, person_key:e.person_key, preset_name:e.preset_name, status:e.status, event_date:e.date, start_time:e.is_all_day ? '00:00' : e.start_time, end_time:e.is_all_day ? '23:59' : e.end_time, is_all_day:!!e.is_all_day, notes:e.notes, color_hex:e.color, recurrence_rule:e.recurrence_rule, imported_source:e.source||null };
 }
 async function saveEvent(e){
   const i=state.events.findIndex(x=>x.id===e.id);
@@ -309,7 +309,8 @@ function setupControls(){
   $('personSelect').onchange=()=>{ fillPresetSelect(); fillPalette(); updateQuickAddVisibility(); };
   $('presetSelect').onchange=()=>{ const p=$('personSelect').value, preset=$('presetSelect').value; const idx=PRESET_DEFAULT[preset] ?? 0; state.selectedColor=PEOPLE[p].palette[idx]; fillPalette(); if(preset==='No-show') $('statusSelect').value='no_show'; updateQuickAddVisibility(); };
   $('repeatToggle').onchange=e=>$('repeatControls').classList.toggle('hidden', !e.target.checked);
-  ['eventTitle','eventDate','startTime','endTime','personSelect'].forEach(id=>{ const el=$(id); if(el) el.addEventListener('input', updateDuplicateWarning); if(el) el.addEventListener('change', updateDuplicateWarning); });
+  if($('allDayCheck')) $('allDayCheck').onchange=updateAllDayControls;
+  ['eventTitle','eventDate','startTime','endTime','personSelect','allDayCheck'].forEach(id=>{ const el=$(id); if(el) el.addEventListener('input', updateDuplicateWarning); if(el) el.addEventListener('change', updateDuplicateWarning); });
   $('saveEventBtn').onclick=async ev=>{ ev.preventDefault(); await submitForm(); };
   $('deleteEventBtn').onclick=async()=>{ const id=$('eventId').value; if(id){ await deleteEvent(id); $('eventDialog').close(); render(); } };
   $('cancelEventBtn').onclick=()=>{$('eventDialog').close();};
@@ -531,11 +532,12 @@ function titlesSimilar(a,b){
   return x.length>=4 && y.length>=4 && (x.includes(y) || y.includes(x));
 }
 function eventsOverlap(a,b){
+  if(a.is_all_day || b.is_all_day) return !!a.is_all_day && !!b.is_all_day;
   return hmToMin(a.start_time) < hmToMin(b.end_time) && hmToMin(a.end_time) > hmToMin(b.start_time);
 }
 function findDuplicateEvents(candidate){
-  if(!candidate?.date || !candidate?.start_time || !candidate?.end_time || !candidate?.person_key) return [];
-  if(hmToMin(candidate.end_time) <= hmToMin(candidate.start_time)) return [];
+  if(!candidate?.date || !candidate?.person_key) return [];
+  if(!candidate.is_all_day && (!candidate.start_time || !candidate.end_time || hmToMin(candidate.end_time) <= hmToMin(candidate.start_time))) return [];
   return state.events.filter(e=>
     e.id !== candidate.id &&
     e.date === candidate.date &&
@@ -552,7 +554,8 @@ function formCandidateEvent(){
     person_key:$('personSelect')?.value || 'donna',
     date:$('eventDate')?.value || '',
     start_time:$('startTime')?.value || '09:00',
-    end_time:$('endTime')?.value || '09:30'
+    end_time:$('endTime')?.value || '09:30',
+    is_all_day:!!$('allDayCheck')?.checked
   };
 }
 function updateDuplicateWarning(){
@@ -561,7 +564,16 @@ function updateDuplicateWarning(){
   const matches=findDuplicateEvents(formCandidateEvent());
   if(!matches.length){ box.classList.add('hidden'); box.innerHTML=''; return; }
   box.classList.remove('hidden');
-  box.innerHTML = `<strong>Possible duplicate</strong><br>${matches.map(e=>`${escapeHtml(e.title)} · ${fmtTime(e.start_time)}–${fmtTime(e.end_time)}`).join('<br>')}<br><small>You can still save if this is intentional.</small>`;
+  box.innerHTML = `<strong>Possible duplicate</strong><br>${matches.map(e=>`${escapeHtml(e.title)} · ${e.is_all_day ? 'All day' : fmtTime(e.start_time)+'–'+fmtTime(e.end_time)}`).join('<br>')}<br><small>You can still save if this is intentional.</small>`;
+}
+
+
+function updateAllDayControls(){
+  const checked=!!$('allDayCheck')?.checked;
+  const row=$('timeRow');
+  if(row) row.classList.toggle('hidden', checked);
+  ['startTime','endTime'].forEach(id=>{ const el=$(id); if(el) el.required=!checked; });
+  updateDuplicateWarning();
 }
 
 function fillPersonSelect(){ $('personSelect').innerHTML=Object.entries(PEOPLE).map(([k,p])=>`<option value="${k}">${p.label}</option>`).join(''); fillPresetSelect(); fillPalette(); }
@@ -649,8 +661,8 @@ function renderMonthView(events, monthDate){
 }
 function renderDensity(events){
   const panel=$('densityPanel'); panel.innerHTML='';
-  for(let i=0;i<7;i++){ const d=addDays(state.weekStart,i); const ds=isoDate(d); const dayEvents=events.filter(e=>e.date===ds && e.status!=='cancelled'); const total=dayEvents.reduce((s,e)=>s+Math.max(0,hmToMin(e.end_time)-hmToMin(e.start_time)),0);
-    const lunchFree=hasGap(dayEvents, 11*60, 14*60, 45);
+  for(let i=0;i<7;i++){ const d=addDays(state.weekStart,i); const ds=isoDate(d); const dayEvents=events.filter(e=>e.date===ds && e.status!=='cancelled'); const timedEvents=dayEvents.filter(e=>!e.is_all_day); const total=timedEvents.reduce((s,e)=>s+Math.max(0,hmToMin(e.end_time)-hmToMin(e.start_time)),0);
+    const lunchFree=hasGap(timedEvents, 11*60, 14*60, 45);
     const level= total>=360 ? 'heavy' : total>=210 ? 'busy' : 'easy';
     const div=document.createElement('div'); div.className=`density-card density-level-${level}${ds<isoDate(new Date())?' past-density':''}`;
     div.innerHTML=`<div class="density-title">${fmtDay(d)} ${fmtDate(d)} · ${Math.round(total/60*10)/10} hrs</div><div class="density-note">${lunchFree?'Lunch window OK':'Lunch risk: no 45-min gap 11–2'}</div>`;
@@ -658,7 +670,7 @@ function renderDensity(events){
   }
 }
 function hasGap(events, start, end, need){
-  const busy=events.map(e=>[Math.max(start,hmToMin(e.start_time)), Math.min(end,hmToMin(e.end_time))]).filter(x=>x[1]>x[0]).sort((a,b)=>a[0]-b[0]);
+  const busy=events.filter(e=>!e.is_all_day).map(e=>[Math.max(start,hmToMin(e.start_time)), Math.min(end,hmToMin(e.end_time))]).filter(x=>x[1]>x[0]).sort((a,b)=>a[0]-b[0]);
   let cursor=start; for(const [a,b] of busy){ if(a-cursor>=need) return true; cursor=Math.max(cursor,b); } return end-cursor>=need;
 }
 function renderGrid(events){
@@ -669,13 +681,17 @@ function renderGrid(events){
   grid.classList.toggle('phone-carousel', phoneCarousel);
   for(let i=0;i<range.days;i++){ const d=addDays(range.start,i); const ds=isoDate(d); const col=document.createElement('section'); col.className='day-column'+(ds===today?' current-day':'')+(ds<today?' past-day':''); col.dataset.date=ds;
     if(state.focusDate===ds) col.classList.add('focused');
-    col.innerHTML=`<div class="day-header" title="Double-click to zoom this day"><div><strong>${fmtDay(d)}</strong><small>${fmtDate(d)}</small></div><button class="add-day" aria-label="Add event">+</button></div><div class="day-timeline"><div class="half-lines"></div></div>`;
+    col.innerHTML=`<div class="day-header" title="Double-click to zoom this day"><div><strong>${fmtDay(d)}</strong><small>${fmtDate(d)}</small></div><button class="add-day" aria-label="Add event">+</button></div><div class="all-day-row" aria-label="All-day events"></div><div class="day-timeline"><div class="half-lines"></div></div>`;
     col.querySelector('.day-header').ondblclick=(ev)=>{ if(ev.target.closest('button')) return; state.focusDate = state.focusDate===ds ? null : ds; document.body.classList.toggle('focus-day', !!state.focusDate); render(); };
     col.querySelector('.add-day').onclick=()=>openDialog({date:ds,start_time:'09:00',end_time:'09:30',person_key:'donna'});
     const tl=col.querySelector('.day-timeline');
     tl.addEventListener('click', ev=>openAddFromTimeline(ev, ds, tl));
     for(let h=START_HOUR; h<=END_HOUR; h++){ const lab=document.createElement('div'); lab.className='time-label'; lab.style.top = `calc(var(--time-label-gutter) + ${h-START_HOUR} * var(--hour-height))`; lab.textContent=fmtTime(String(h).padStart(2,'0')+':00'); tl.appendChild(lab); }
-    const dayEvents=events.filter(e=>e.date===ds).sort((a,b)=>hmToMin(a.start_time)-hmToMin(b.start_time)); assignOverlapLanes(dayEvents).forEach(e=>tl.appendChild(eventEl(e)));
+    const allDayWrap=col.querySelector('.all-day-row');
+    const allDayEvents=events.filter(e=>e.date===ds && e.is_all_day).sort((a,b)=>String(a.title||'').localeCompare(String(b.title||'')));
+    allDayWrap.classList.toggle('empty', allDayEvents.length===0);
+    allDayEvents.forEach(e=>allDayWrap.appendChild(allDayEventEl(e)));
+    const dayEvents=events.filter(e=>e.date===ds && !e.is_all_day).sort((a,b)=>hmToMin(a.start_time)-hmToMin(b.start_time)); assignOverlapLanes(dayEvents).forEach(e=>tl.appendChild(eventEl(e)));
     grid.appendChild(col);
   }
   requestAnimationFrame(resetCarouselPosition);
@@ -722,6 +738,18 @@ function assignOverlapLanes(list){
   }
   return positioned;
 }
+
+function allDayEventEl(e){
+  const div=document.createElement('article');
+  div.className='all-day-event '+(e.status==='no_show'?'no-show ':'')+(e.status==='cancelled'?'cancelled ':'');
+  div.style.background=e.color||'#ddd';
+  div.innerHTML=`<span class="event-title">${escapeHtml(e.title)}</span>`;
+  attachNoShowGestures(div,e);
+  div.addEventListener('pointerdown', ev=>ev.stopPropagation());
+  div.onclick=(ev)=>{ ev.stopPropagation(); ev.preventDefault(); openDetails(e); };
+  return div;
+}
+
 function eventEl(e){
   const div=document.createElement('article'); div.className='event-block '+(e.status==='no_show'?'no-show ':'')+(canToggleNoShow(e)?'can-no-show ':'')+(e.status==='cancelled'?'cancelled ':'')+(e.overlap?'overlap-lane ':'')+(e.overlapStack?'overlap-stack ':'');
   const startOffset=(hmToMin(e.start_time)-START_HOUR*60)/60;
@@ -749,10 +777,10 @@ function renderPrint(events, startArg=null, daysArg=null){
   for(let i=0;i<days;i++){
     const d=addDays(start,i);
     const ds=isoDate(d);
-    const dayEvents=events.filter(e=>e.date===ds).sort((a,b)=>hmToMin(a.start_time)-hmToMin(b.start_time));
+    const dayEvents=events.filter(e=>e.date===ds).sort((a,b)=>(a.is_all_day?0:1)-(b.is_all_day?0:1) || hmToMin(a.start_time||'00:00')-hmToMin(b.start_time||'00:00'));
     const wrap=document.createElement('div');
     wrap.className='print-day'+(ds<isoDate(new Date())?' past-print':'');
-    wrap.innerHTML=`<h3>${fmtDay(d)} ${fmtDate(d)}</h3>` + (dayEvents.length?`<ul>${dayEvents.map(e=>`<li>${fmtTime(e.start_time)}–${fmtTime(e.end_time)} · ${escapeHtml(e.title)} · ${PEOPLE[e.person_key]?.label} · ${e.preset_name}${e.status==='no_show'?' · NO-SHOW':''}</li>`).join('')}</ul>`:'<p>No blocks.</p>');
+    wrap.innerHTML=`<h3>${fmtDay(d)} ${fmtDate(d)}</h3>` + (dayEvents.length?`<ul>${dayEvents.map(e=>`<li>${e.is_all_day ? 'All day' : fmtTime(e.start_time)+'–'+fmtTime(e.end_time)} · ${escapeHtml(e.title)} · ${PEOPLE[e.person_key]?.label} · ${e.preset_name}${e.status==='no_show'?' · NO-SHOW':''}</li>`).join('')}</ul>`:'<p>No blocks.</p>');
     box.appendChild(wrap);
   }
 }
@@ -794,7 +822,7 @@ function openDetails(e){
     <div class="detail-row"><span class="detail-label">Person</span><span>${escapeHtml(person)}</span></div>
     <div class="detail-row"><span class="detail-label">Preset</span><span><span class="detail-chip" style="background:${escapeHtml(e.color||'#ddd')}">${escapeHtml(e.preset_name||'')}</span></span></div>
     <div class="detail-row"><span class="detail-label">Date</span><span>${escapeHtml(e.date)}</span></div>
-    <div class="detail-row"><span class="detail-label">Time</span><span>${fmtTime(e.start_time)}–${fmtTime(e.end_time)}</span></div>
+    <div class="detail-row"><span class="detail-label">Time</span><span>${e.is_all_day ? 'All day' : fmtTime(e.start_time)+'–'+fmtTime(e.end_time)}</span></div>
     <div class="detail-row"><span class="detail-label">Status</span><span>${escapeHtml(status)}</span></div>
     <div class="detail-row"><span class="detail-label">Repeat</span><span>${escapeHtml(recurrence)}</span></div>
     <div class="detail-row"><span class="detail-label">Notes</span><span>${escapeHtml(e.notes||'')}</span></div>`;
@@ -806,15 +834,16 @@ function openDetails(e){
 }
 function openDialog(e){
   $('dialogTitle').textContent=e.id?'Edit':'+ Add'; $('eventId').value=e.id||''; $('eventTitle').value=e.title||''; $('personSelect').value=e.person_key||'donna'; fillPresetSelect(); $('presetSelect').value=e.preset_name||PEOPLE[$('personSelect').value].presets[0];
-  $('eventDate').value=e.date||isoDate(state.weekStart); $('startTime').value=e.start_time||'09:00'; $('endTime').value=e.end_time||'09:30'; $('statusSelect').value=e.status||'scheduled'; $('eventNotes').value=e.notes||''; state.selectedColor=e.color||PEOPLE[$('personSelect').value].palette[0]; fillPalette(); fillStudentQuickAddSelect(); if($('studentQuickAddSelect')) $('studentQuickAddSelect').value=''; updateQuickAddVisibility();
+  $('eventDate').value=e.date||isoDate(state.weekStart); $('startTime').value=e.start_time||'09:00'; $('endTime').value=e.end_time||'09:30'; if($('allDayCheck')) $('allDayCheck').checked=!!e.is_all_day; updateAllDayControls(); $('statusSelect').value=e.status||'scheduled'; $('eventNotes').value=e.notes||''; state.selectedColor=e.color||PEOPLE[$('personSelect').value].palette[0]; fillPalette(); fillStudentQuickAddSelect(); if($('studentQuickAddSelect')) $('studentQuickAddSelect').value=''; updateQuickAddVisibility();
   $('repeatToggle').checked=!!e.recurrence_rule?.enabled; $('repeatControls').classList.toggle('hidden',!$('repeatToggle').checked); const repeatParts=getRepeatParts(e.recurrence_rule||{frequency:'weekly'}); $('repeatInterval').value=repeatParts.interval; $('repeatUnit').value=repeatParts.unit; $('repeatUntil').value=e.recurrence_rule?.until||''; document.querySelectorAll('.weekday-picker input').forEach(ch=>ch.checked=e.recurrence_rule?.days?.map(String).includes(ch.value)||false);
   $('deleteEventBtn').classList.toggle('hidden',!e.id || e.recurring_instance); updateEventDateButton(); updateDuplicateWarning(); $('eventDialog').showModal(); setTimeout(()=>$('eventDialog').focus({preventScroll:true}), 0);
 }
 async function submitForm(){
   const repeatUnit=normalizeRepeatUnit($('repeatUnit').value);
   const rec=$('repeatToggle').checked ? { enabled:true, unit:repeatUnit, interval:normalizeRepeatInterval($('repeatInterval').value), frequency:repeatUnit==='day'?'daily':repeatUnit==='week'?'weekly':repeatUnit==='month'?'monthly':'yearly', until:$('repeatUntil').value||null, days:[...document.querySelectorAll('.weekday-picker input:checked')].map(x=>Number(x.value)) } : null;
-  const e={ id:$('eventId').value||uuid(), title:$('eventTitle').value.trim(), person_key:$('personSelect').value, preset_name:$('presetSelect').value, date:$('eventDate').value, start_time:$('startTime').value, end_time:$('endTime').value, status:$('statusSelect').value, color:state.selectedColor, notes:$('eventNotes').value.trim(), recurrence_rule:rec };
-  if(hmToMin(e.end_time)<=hmToMin(e.start_time)){ alert('End time has to be after start time. Time goblin denied.'); return; }
+  const isAllDay=!!$('allDayCheck')?.checked;
+  const e={ id:$('eventId').value||uuid(), title:$('eventTitle').value.trim(), person_key:$('personSelect').value, preset_name:$('presetSelect').value, date:$('eventDate').value, start_time:isAllDay?'00:00':$('startTime').value, end_time:isAllDay?'23:59':$('endTime').value, is_all_day:isAllDay, status:$('statusSelect').value, color:state.selectedColor, notes:$('eventNotes').value.trim(), recurrence_rule:rec };
+  if(!e.is_all_day && hmToMin(e.end_time)<=hmToMin(e.start_time)){ alert('End time has to be after start time. Time goblin denied.'); return; }
   await saveEvent(e); $('eventDialog').close(); render();
 }
 function escapeHtml(s){ return String(s||'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }

@@ -30,6 +30,7 @@ create table if not exists public.tod_donna_calendar_events (
   event_date date not null,
   start_time time not null,
   end_time time not null,
+  is_all_day boolean not null default false,
   color_hex text not null default '#c8dff0',
   notes text,
   recurrence_rule jsonb,
@@ -38,6 +39,11 @@ create table if not exists public.tod_donna_calendar_events (
   updated_at timestamptz not null default now(),
   constraint tod_donna_calendar_events_time_check check (end_time > start_time)
 );
+
+
+-- V1.29: support untimed all-day events such as birthdays and annual reminders.
+alter table public.tod_donna_calendar_events
+  add column if not exists is_all_day boolean not null default false;
 
 create table if not exists public.tod_donna_calendar_event_exceptions (
   id uuid primary key default gen_random_uuid(),
