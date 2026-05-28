@@ -17,7 +17,7 @@
       <img src="our-scheduler-icon.svg?v=1.16" alt="" class="app-icon" />
       <div>
         <h1>Our Scheduler</h1>
-        <p class="version">V1.26 · shared weekly planner</p>
+        <p class="version">V1.28 · shared weekly planner</p>
       </div>
     </div>
     <div class="header-actions"><button id="studentsHeaderBtn" class="secondary compact-add" type="button">Students</button><button id="addEventBtn" class="primary compact-add">+ Add</button></div>
@@ -118,12 +118,19 @@
         <legend>Repeat</legend>
         <label><input id="repeatToggle" type="checkbox" /> Recurring block</label>
         <div id="repeatControls" class="repeat-controls hidden">
-          <label>Frequency
-            <select id="repeatFrequency">
-              <option value="weekly">Weekly</option>
-              <option value="daily">Daily</option>
-            </select>
-          </label>
+          <div class="repeat-every-row">
+            <label>Every
+              <input id="repeatInterval" type="number" min="1" max="99" step="1" value="1" inputmode="numeric" />
+            </label>
+            <label>Unit
+              <select id="repeatUnit">
+                <option value="day">Day(s)</option>
+                <option value="week">Week(s)</option>
+                <option value="month">Month(s)</option>
+                <option value="year">Year(s)</option>
+              </select>
+            </label>
+          </div>
           <label>Until <input id="repeatUntil" type="date" /></label>
           <div class="weekday-picker">
             <label><input type="checkbox" value="1" /> Mon</label>
@@ -170,6 +177,6 @@
     </form>
   </dialog>
   <script src="seed-events.js?v=1.5"></script>
-  <script src="app.js?v=1.26"></script>
+  <script src="app.js?v=1.28"></script>
 </body>
 </html>

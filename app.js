@@ -15,6 +15,76 @@ function addDays(d,n){ const x=new Date(d); x.setDate(x.getDate()+n); return x; 
 function isoDate(d){ return d.toISOString().slice(0,10); }
 function hmToMin(hm){ const [h,m]=hm.split(':').map(Number); return h*60+m; }
 function minToHm(min){ return `${String(Math.floor(min/60)).padStart(2,'0')}:${String(min%60).padStart(2,'0')}`; }
+function daysInMonth(year, monthIndex){ return new Date(year, monthIndex + 1, 0).getDate(); }
+function monthDiff(a,b){ return (b.getFullYear()-a.getFullYear())*12 + (b.getMonth()-a.getMonth()); }
+function sameCalendarDay(a,b){ return a.getFullYear()===b.getFullYear() && a.getMonth()===b.getMonth() && a.getDate()===b.getDate(); }
+function monthlyAnchorDate(base, target, intervalMonths){
+  const diff=monthDiff(base,target);
+  if(diff < 0 || diff % intervalMonths !== 0) return false;
+  const anchorDay=Math.min(base.getDate(), daysInMonth(target.getFullYear(), target.getMonth()));
+  return target.getDate()===anchorDay;
+}
+function yearlyAnchorDate(base,target){
+  if(target.getFullYear() < base.getFullYear()) return false;
+  if(base.getMonth()===1 && base.getDate()===29){
+    const anchorDay=daysInMonth(target.getFullYear(),1)===29 ? 29 : 28;
+    return target.getMonth()===1 && target.getDate()===anchorDay;
+  }
+  return target.getMonth()===base.getMonth() && target.getDate()===base.getDate();
+}
+function normalizeRepeatInterval(value){
+  const n=Math.floor(Number(value));
+  return Number.isFinite(n) && n > 0 ? Math.min(n,99) : 1;
+}
+function normalizeRepeatUnit(value){
+  const unit=String(value||'').toLowerCase();
+  if(['day','week','month','year'].includes(unit)) return unit;
+  const legacy={ daily:'day', weekly:'week', monthly:'month', quarterly:'month', yearly:'year', annual:'year' };
+  return legacy[unit] || 'week';
+}
+function legacyIntervalFromFrequency(freq){
+  return freq==='quarterly' ? 3 : 1;
+}
+function getRepeatParts(rule){
+  const unit=normalizeRepeatUnit(rule?.unit || rule?.frequency);
+  const interval=normalizeRepeatInterval(rule?.interval || legacyIntervalFromFrequency(rule?.frequency));
+  return { unit, interval };
+}
+function recurringEventOccursOn(e,d){
+  const rule=e.recurrence_rule;
+  if(!rule?.enabled) return false;
+  const base=new Date(e.date+'T00:00');
+  const target=new Date(isoDate(d)+'T00:00');
+  if(target <= base) return false;
+  if(rule.until && target > new Date(rule.until+'T23:59:59')) return false;
+  const {unit, interval}=getRepeatParts(rule);
+  if(unit==='day'){
+    const diffDays=Math.round((target-base)/86400000);
+    return diffDays > 0 && diffDays % interval === 0;
+  }
+  if(unit==='week'){
+    const days=rule.days?.length ? rule.days.map(Number) : [base.getDay()];
+    if(!days.includes(target.getDay())) return false;
+    const weekStartBase=startOfWeek(base);
+    const weekStartTarget=startOfWeek(target);
+    const diffWeeks=Math.round((weekStartTarget-weekStartBase)/(86400000*7));
+    return diffWeeks > 0 && diffWeeks % interval === 0;
+  }
+  if(unit==='month') return monthlyAnchorDate(base,target,interval);
+  if(unit==='year'){
+    const diffYears=target.getFullYear()-base.getFullYear();
+    return diffYears > 0 && diffYears % interval === 0 && yearlyAnchorDate(base,target);
+  }
+  return false;
+}
+function recurrenceLabel(rule){
+  if(!rule?.enabled) return 'None';
+  const {unit, interval}=getRepeatParts(rule);
+  const unitLabel=unit.charAt(0).toUpperCase()+unit.slice(1)+(interval===1?'':'s');
+  const label=interval===1 ? `Every ${unit}` : `Every ${interval} ${unit}s`;
+  return `${label}${rule.until ? ' until '+rule.until : ''}`;
+}
+
 function fmtDate(d){ return d.toLocaleDateString(undefined,{month:'short',day:'numeric'}); }
 function fmtDay(d){ return d.toLocaleDateString(undefined,{weekday:'short'}); }
 function fmtTime(hm){ const [h,m]=hm.split(':').map(Number); const suffix=h>=12?'pm':'am'; const hr=((h+11)%12)+1; return `${hr}:${String(m).padStart(2,'0')}${suffix}`; }
@@ -507,11 +577,10 @@ function expandEventsForRange(rangeStart, rangeDays){
   for(const e of state.events){
     if(e.date>=start && e.date<end) out.push(e);
     if(e.recurrence_rule?.enabled){
-      const base=new Date(e.date+'T00:00'); const until=e.recurrence_rule.until ? new Date(e.recurrence_rule.until+'T00:00') : addDays(base,365);
-      for(let i=0;i<rangeDays;i++){ const d=addDays(rangeStart,i); const ds=isoDate(d); if(ds<=e.date || d>until) continue;
-        const dow=d.getDay();
-        const days=e.recurrence_rule.days?.length ? e.recurrence_rule.days.map(Number) : [base.getDay()];
-        if(days.includes(dow)) out.push({...e, id:e.id+'__'+ds, date:ds, recurring_instance:true});
+      for(let i=0;i<rangeDays;i++){
+        const d=addDays(rangeStart,i);
+        const ds=isoDate(d);
+        if(recurringEventOccursOn(e,d)) out.push({...e, id:e.id+'__'+ds, date:ds, recurring_instance:true});
       }
     }
   }
@@ -714,7 +783,7 @@ function openDetails(e){
   state.detailsEvent=e;
   const person=PEOPLE[e.person_key]?.label||e.person_key;
   const status=e.status==='no_show'?'No-show':(e.status==='cancelled'?'Cancelled':'Scheduled');
-  const recurrence=e.recurrence_rule?.enabled ? `${e.recurrence_rule.frequency || 'Recurring'}${e.recurrence_rule.until ? ' until '+e.recurrence_rule.until : ''}` : 'None';
+  const recurrence=recurrenceLabel(e.recurrence_rule);
   $('deleteDetailsBtn').classList.toggle('hidden', !!e.recurring_instance);
   $('eventDetailsContent').innerHTML=`
     <div class="detail-main-title"><span class="detail-dot" style="background:${escapeHtml(e.color||'#ddd')}"></span>${escapeHtml(e.title)}</div>
@@ -738,11 +807,12 @@ function openDetails(e){
 function openDialog(e){
   $('dialogTitle').textContent=e.id?'Edit':'+ Add'; $('eventId').value=e.id||''; $('eventTitle').value=e.title||''; $('personSelect').value=e.person_key||'donna'; fillPresetSelect(); $('presetSelect').value=e.preset_name||PEOPLE[$('personSelect').value].presets[0];
   $('eventDate').value=e.date||isoDate(state.weekStart); $('startTime').value=e.start_time||'09:00'; $('endTime').value=e.end_time||'09:30'; $('statusSelect').value=e.status||'scheduled'; $('eventNotes').value=e.notes||''; state.selectedColor=e.color||PEOPLE[$('personSelect').value].palette[0]; fillPalette(); fillStudentQuickAddSelect(); if($('studentQuickAddSelect')) $('studentQuickAddSelect').value=''; updateQuickAddVisibility();
-  $('repeatToggle').checked=!!e.recurrence_rule?.enabled; $('repeatControls').classList.toggle('hidden',!$('repeatToggle').checked); $('repeatFrequency').value=e.recurrence_rule?.frequency||'weekly'; $('repeatUntil').value=e.recurrence_rule?.until||''; document.querySelectorAll('.weekday-picker input').forEach(ch=>ch.checked=e.recurrence_rule?.days?.map(String).includes(ch.value)||false);
+  $('repeatToggle').checked=!!e.recurrence_rule?.enabled; $('repeatControls').classList.toggle('hidden',!$('repeatToggle').checked); const repeatParts=getRepeatParts(e.recurrence_rule||{frequency:'weekly'}); $('repeatInterval').value=repeatParts.interval; $('repeatUnit').value=repeatParts.unit; $('repeatUntil').value=e.recurrence_rule?.until||''; document.querySelectorAll('.weekday-picker input').forEach(ch=>ch.checked=e.recurrence_rule?.days?.map(String).includes(ch.value)||false);
   $('deleteEventBtn').classList.toggle('hidden',!e.id || e.recurring_instance); updateEventDateButton(); updateDuplicateWarning(); $('eventDialog').showModal(); setTimeout(()=>$('eventDialog').focus({preventScroll:true}), 0);
 }
 async function submitForm(){
-  const rec=$('repeatToggle').checked ? { enabled:true, frequency:$('repeatFrequency').value, until:$('repeatUntil').value||null, days:[...document.querySelectorAll('.weekday-picker input:checked')].map(x=>Number(x.value)) } : null;
+  const repeatUnit=normalizeRepeatUnit($('repeatUnit').value);
+  const rec=$('repeatToggle').checked ? { enabled:true, unit:repeatUnit, interval:normalizeRepeatInterval($('repeatInterval').value), frequency:repeatUnit==='day'?'daily':repeatUnit==='week'?'weekly':repeatUnit==='month'?'monthly':'yearly', until:$('repeatUntil').value||null, days:[...document.querySelectorAll('.weekday-picker input:checked')].map(x=>Number(x.value)) } : null;
   const e={ id:$('eventId').value||uuid(), title:$('eventTitle').value.trim(), person_key:$('personSelect').value, preset_name:$('presetSelect').value, date:$('eventDate').value, start_time:$('startTime').value, end_time:$('endTime').value, status:$('statusSelect').value, color:state.selectedColor, notes:$('eventNotes').value.trim(), recurrence_rule:rec };
   if(hmToMin(e.end_time)<=hmToMin(e.start_time)){ alert('End time has to be after start time. Time goblin denied.'); return; }
   await saveEvent(e); $('eventDialog').close(); render();
