@@ -153,19 +153,37 @@ function seedEvents(){
 async function loadEvents(){
   if(state.storageMode==='supabase'){
     const { data, error } = await state.supabase.from('tod_donna_calendar_events').select('*').order('event_date');
-    if(!error && data?.length){ state.events = data.map(fromDb); return; }
-    if(!error){
-      state.events = seedEvents();
-      await state.supabase.from('tod_donna_calendar_events').upsert(state.events.map(toDb));
-      await saveAllLocal();
+    if(error){
+      state.events = [];
+      setSyncStatus('Supabase load failed — not showing private/local events.', 'error');
+      showSyncError('Supabase could not load shared events. Check that the latest SQL has been run and RLS/policies allow access.', error);
       return;
     }
+    if(data?.length){
+      state.events = data.map(fromDb);
+      localStorage.removeItem('tod_donna_calendar_events_v1');
+      return;
+    }
+    const seeded = seedEvents();
+    if(seeded.length){
+      const { error: seedError } = await state.supabase.from('tod_donna_calendar_events').upsert(seeded.map(toDb));
+      if(seedError){
+        state.events = [];
+        setSyncStatus('Supabase seed failed.', 'error');
+        showSyncError('Supabase could not seed shared events. Check the schema/RLS before using the app.', seedError);
+        return;
+      }
+    }
+    state.events = seeded;
+    localStorage.removeItem('tod_donna_calendar_events_v1');
+    return;
   }
   const saved = localStorage.getItem('tod_donna_calendar_events_v1');
   if(saved){ state.events=JSON.parse(saved); return; }
   state.events=seedEvents();
   await saveAllLocal();
 }
+
 
 async function loadStudentList(){
   const fallback = () => {
@@ -268,17 +286,61 @@ function toDb(e){
   return { id:e.id, title:e.title, person_key:e.person_key, preset_name:e.preset_name, status:e.status, event_date:e.date, start_time:e.is_all_day ? '00:00' : e.start_time, end_time:e.is_all_day ? '23:59' : e.end_time, is_all_day:!!e.is_all_day, notes:e.notes, color_hex:e.color, recurrence_rule:e.recurrence_rule, imported_source:e.source||null };
 }
 async function saveEvent(e){
+  if(state.storageMode==='supabase'){
+    const { error } = await state.supabase.from('tod_donna_calendar_events').upsert(toDb(e));
+    if(error){
+      setSyncStatus('Event was NOT saved to shared calendar.', 'error');
+      showSyncError("Event was not saved. It will not appear on Donna's phone or other browsers until this is fixed.", error);
+      throw error;
+    }
+    const i=state.events.findIndex(x=>x.id===e.id);
+    if(i>=0) state.events[i]=e; else state.events.push(e);
+    localStorage.removeItem('tod_donna_calendar_events_v1');
+    setSyncStatus('Saved to shared calendar');
+    return;
+  }
   const i=state.events.findIndex(x=>x.id===e.id);
   if(i>=0) state.events[i]=e; else state.events.push(e);
-  if(state.storageMode==='supabase') await state.supabase.from('tod_donna_calendar_events').upsert(toDb(e));
   await saveAllLocal();
+  setSyncStatus('Saved on this device only', 'warn');
 }
 async function deleteEvent(id){
+  if(state.storageMode==='supabase'){
+    const { error } = await state.supabase.from('tod_donna_calendar_events').delete().eq('id',id);
+    if(error){
+      setSyncStatus('Delete failed on shared calendar.', 'error');
+      showSyncError('Delete failed. The shared calendar was not changed.', error);
+      throw error;
+    }
+    state.events=state.events.filter(e=>e.id!==id);
+    localStorage.removeItem('tod_donna_calendar_events_v1');
+    setSyncStatus('Deleted from shared calendar');
+    return;
+  }
   state.events=state.events.filter(e=>e.id!==id);
-  if(state.storageMode==='supabase') await state.supabase.from('tod_donna_calendar_events').delete().eq('id',id);
   await saveAllLocal();
 }
 async function saveAllLocal(){ localStorage.setItem('tod_donna_calendar_events_v1', JSON.stringify(state.events)); }
+function showSyncError(message, error){
+  const detail = error?.message || error?.details || error?.hint || String(error || '');
+  console.error(message, error || '');
+  const full = detail ? `${message}\n\n${detail}` : message;
+  alert(full);
+}
+function setSyncStatus(message, tone='ok'){
+  let el=document.getElementById('syncStatus');
+  if(!el){
+    el=document.createElement('div');
+    el.id='syncStatus';
+    el.className='sync-status';
+    document.body.appendChild(el);
+  }
+  el.textContent=message;
+  el.dataset.tone=tone;
+  el.classList.remove('hidden');
+  clearTimeout(setSyncStatus._t);
+  setSyncStatus._t=setTimeout(()=>el.classList.add('hidden'), tone==='error'?9000:2400);
+}
 
 function setupZoomGuards(){
   // Phone web-app behavior: do not let two-finger pinch zoom wreck the 3-day rail.
@@ -844,7 +906,12 @@ async function submitForm(){
   const isAllDay=!!$('allDayCheck')?.checked;
   const e={ id:$('eventId').value||uuid(), title:$('eventTitle').value.trim(), person_key:$('personSelect').value, preset_name:$('presetSelect').value, date:$('eventDate').value, start_time:isAllDay?'00:00':$('startTime').value, end_time:isAllDay?'23:59':$('endTime').value, is_all_day:isAllDay, status:$('statusSelect').value, color:state.selectedColor, notes:$('eventNotes').value.trim(), recurrence_rule:rec };
   if(!e.is_all_day && hmToMin(e.end_time)<=hmToMin(e.start_time)){ alert('End time has to be after start time. Time goblin denied.'); return; }
-  await saveEvent(e); $('eventDialog').close(); render();
+  try{
+    await saveEvent(e);
+  }catch(err){
+    return;
+  }
+  $('eventDialog').close(); render();
 }
 function escapeHtml(s){ return String(s||'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
 init();

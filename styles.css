@@ -1000,3 +1000,8 @@ html, body {
   .all-day-event { padding:.08rem .24rem; border-radius:7px; }
   .all-day-event .event-title { font-size:.5rem; }
 }
+
+.sync-status{position:fixed;left:50%;bottom:18px;transform:translateX(-50%);z-index:9999;padding:10px 14px;border-radius:999px;background:#223;color:#fff;font-size:13px;box-shadow:0 8px 24px rgba(0,0,0,.25);max-width:min(92vw,520px);text-align:center}
+.sync-status[data-tone="error"]{background:#8b1d1d;color:#fff}
+.sync-status[data-tone="warn"]{background:#775312;color:#fff}
+.sync-status.hidden{display:none}
