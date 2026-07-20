@@ -1,0 +1,85 @@
+name: Release Scheduler V1.31
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Apply V1.31 fixes
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          app = Path('app.js')
+          s = app.read_text()
+
+          replacements = [
+              ('const END_HOUR = 22;', 'const END_HOUR = 24;'),
+              ("let state = { weekStart: startOfWeek(new Date()), filter:'all', events:[], studentList:{ group: defaultStudentGroupName(), students:[], names:[] }, selectedColor:'#c8dff0', supabase:null, storageMode:'local', focusDate:null, detailsEvent:null, pendingScrollDate:isoDate(new Date()), adjustingScroll:false, viewMode:'week' };", "let state = { weekStart: startOfWeek(new Date()), filter:'all', events:[], studentList:{ group: defaultStudentGroupName(), students:[], names:[] }, selectedColor:'#c8dff0', supabase:null, storageMode:'local', focusDate:null, detailsEvent:null, pendingScrollDate:isoDate(new Date()), adjustingScroll:false, viewMode:'week' };\nlet appReady = false;\nlet resumeRefreshTimer = null;"),
+              ("function isoDate(d){ return d.toISOString().slice(0,10); }", "function isoDate(d){ const x=new Date(d); return `${x.getFullYear()}-${String(x.getMonth()+1).padStart(2,'0')}-${String(x.getDate()).padStart(2,'0')}`; }"),
+              ("function fmtTime(hm){ const [h,m]=hm.split(':').map(Number); const suffix=h>=12?'pm':'am'; const hr=((h+11)%12)+1; return `${hr}:${String(m).padStart(2,'0')}${suffix}`; }", "function fmtTime(hm){ const [rawH,m]=hm.split(':').map(Number); const h=((rawH%24)+24)%24; const suffix=h>=12?'pm':'am'; const hr=((h+11)%12)+1; return `${hr}:${String(m).padStart(2,'0')}${suffix}`; }"),
+              ("  setupNoShowContextClose();\n  fillPersonSelect();", "  setupNoShowContextClose();\n  setupAppResume();\n  fillPersonSelect();"),
+              ("  focusTodayOnLaunch();\n  render();\n}", "  focusTodayOnLaunch();\n  render();\n  appReady = true;\n}"),
+              ('  const max = END_HOUR * 60 - 30;', '  const max = Math.min(END_HOUR * 60 - 30, 23 * 60);'),
+          ]
+
+          for old, new in replacements:
+              if old not in s:
+                  raise SystemExit(f'Missing app.js anchor: {old[:70]}')
+              s = s.replace(old, new, 1)
+
+          anchor = "function focusTodayOnLaunch(){\n  const today = isoDate(new Date());\n  state.weekStart = startOfWeek(new Date(today + 'T00:00'));\n  state.focusDate = null;\n  state.viewMode = 'week';\n  state.pendingScrollDate = today;\n  document.body.classList.remove('month-view-active','focus-day');\n}\n"
+          addition = anchor + "function setupAppResume(){\n  document.addEventListener('visibilitychange', ()=>{\n    if(!document.hidden) refreshTodayAfterResume();\n  });\n  window.addEventListener('pageshow', event=>{\n    if(event.persisted) refreshTodayAfterResume();\n  });\n}\nfunction refreshTodayAfterResume(){\n  if(!appReady || document.hidden) return;\n  clearTimeout(resumeRefreshTimer);\n  resumeRefreshTimer=setTimeout(()=>{\n    focusTodayOnLaunch();\n    render();\n  }, 75);\n}\n"
+          if anchor not in s:
+              raise SystemExit('Missing focusTodayOnLaunch anchor')
+          s = s.replace(anchor, addition, 1)
+          app.write_text(s)
+
+          css = Path('styles.css')
+          s = css.read_text()
+          css_replacements = [
+              ('height:calc(var(--hour-height) * 16);', 'height:calc(var(--hour-height) * 18);'),
+              ('height: calc(var(--time-label-gutter) + (var(--hour-height) * 16)) !important;', 'height: calc(var(--time-label-gutter) + (var(--hour-height) * 18)) !important;'),
+          ]
+          for old, new in css_replacements:
+              if old not in s:
+                  raise SystemExit(f'Missing styles.css anchor: {old}')
+              s = s.replace(old, new, 1)
+          css.write_text(s)
+
+          index = Path('index.html')
+          s = index.read_text()
+          index_replacements = [
+              ('styles.css?v=1.30', 'styles.css?v=1.31'),
+              ('V1.30 · shared weekly planner', 'V1.31 · shared weekly planner'),
+              ('app.js?v=1.30', 'app.js?v=1.31'),
+          ]
+          for old, new in index_replacements:
+              if old not in s:
+                  raise SystemExit(f'Missing index.html anchor: {old}')
+              s = s.replace(old, new, 1)
+          index.write_text(s)
+          PY
+
+          node --check app.js
+
+      - name: Commit release and remove temporary workflow
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/scheduler-v131.yml
+          git add app.js styles.css index.html
+          git commit -m "Release Scheduler V1.31"
+          git push
