@@ -6,13 +6,15 @@ const PEOPLE = {
 };
 const PRESET_DEFAULT = { Class:0, Lesson:1, Rehearsal:2, Meeting:3, Performance:4, 'No-show':6, Event:2, Doctor:0, Hair:1, Church:6, Appointment:2, Camping:0, Roadtrip:3, Shopping:1, Friends:4, Family:2, Other:7 };
 const START_HOUR = 6;
-const END_HOUR = 22;
+const END_HOUR = 24;
 let state = { weekStart: startOfWeek(new Date()), filter:'all', events:[], studentList:{ group: defaultStudentGroupName(), students:[], names:[] }, selectedColor:'#c8dff0', supabase:null, storageMode:'local', focusDate:null, detailsEvent:null, pendingScrollDate:isoDate(new Date()), adjustingScroll:false, viewMode:'week' };
+let appReady = false;
+let resumeRefreshTimer = null;
 
 const $ = id => document.getElementById(id);
 function startOfWeek(d){ const x=new Date(d); x.setHours(0,0,0,0); const day=x.getDay(); const diff=(day+6)%7; x.setDate(x.getDate()-diff); return x; }
 function addDays(d,n){ const x=new Date(d); x.setDate(x.getDate()+n); return x; }
-function isoDate(d){ return d.toISOString().slice(0,10); }
+function isoDate(d){ const x=new Date(d); return `${x.getFullYear()}-${String(x.getMonth()+1).padStart(2,'0')}-${String(x.getDate()).padStart(2,'0')}`; }
 function hmToMin(hm){ const [h,m]=hm.split(':').map(Number); return h*60+m; }
 function minToHm(min){ return `${String(Math.floor(min/60)).padStart(2,'0')}:${String(min%60).padStart(2,'0')}`; }
 function daysInMonth(year, monthIndex){ return new Date(year, monthIndex + 1, 0).getDate(); }
@@ -87,7 +89,7 @@ function recurrenceLabel(rule){
 
 function fmtDate(d){ return d.toLocaleDateString(undefined,{month:'short',day:'numeric'}); }
 function fmtDay(d){ return d.toLocaleDateString(undefined,{weekday:'short'}); }
-function fmtTime(hm){ const [h,m]=hm.split(':').map(Number); const suffix=h>=12?'pm':'am'; const hr=((h+11)%12)+1; return `${hr}:${String(m).padStart(2,'0')}${suffix}`; }
+function fmtTime(hm){ const [rawH,m]=hm.split(':').map(Number); const h=((rawH%24)+24)%24; const suffix=h>=12?'pm':'am'; const hr=((h+11)%12)+1; return `${hr}:${String(m).padStart(2,'0')}${suffix}`; }
 function uuid(){ return crypto.randomUUID ? crypto.randomUUID() : 'id-'+Date.now()+'-'+Math.random().toString(16).slice(2); }
 function defaultStudentGroupName(){ return 'Active Students'; }
 function normalizeLessonMinutes(value){ const n=Number(value); return [30,60].includes(n) ? n : 30; }
@@ -127,11 +129,13 @@ async function init(){
   setupZoomGuards();
   setupSwipeNavigation();
   setupNoShowContextClose();
+  setupAppResume();
   fillPersonSelect();
   await loadStudentList();
   await loadEvents();
   focusTodayOnLaunch();
   render();
+  appReady = true;
 }
 function setupSupabase(){
   const url = window.TOD_DONNA_CALENDAR_SUPABASE_URL;
@@ -481,6 +485,22 @@ function focusTodayOnLaunch(){
   state.pendingScrollDate = today;
   document.body.classList.remove('month-view-active','focus-day');
 }
+function setupAppResume(){
+  document.addEventListener('visibilitychange', ()=>{
+    if(!document.hidden) refreshTodayAfterResume();
+  });
+  window.addEventListener('pageshow', event=>{
+    if(event.persisted) refreshTodayAfterResume();
+  });
+}
+function refreshTodayAfterResume(){
+  if(!appReady || document.hidden) return;
+  clearTimeout(resumeRefreshTimer);
+  resumeRefreshTimer=setTimeout(()=>{
+    focusTodayOnLaunch();
+    render();
+  }, 75);
+}
 function slotTimeFromPointer(ev, timeline){
   const rect = timeline.getBoundingClientRect();
   const styles = getComputedStyle(timeline);
@@ -490,7 +510,7 @@ function slotTimeFromPointer(ev, timeline){
   const rawMinutes = START_HOUR * 60 + (rawY / hourHeight) * 60;
   const snapped = Math.round(rawMinutes / 30) * 30;
   const min = START_HOUR * 60;
-  const max = END_HOUR * 60 - 30;
+  const max = Math.min(END_HOUR * 60 - 30, 23 * 60);
   return minToHm(Math.max(min, Math.min(max, snapped)));
 }
 function openAddFromTimeline(ev, dateStr, timeline){
