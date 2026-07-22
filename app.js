@@ -10,6 +10,7 @@ const END_HOUR = 24;
 let state = { weekStart: startOfWeek(new Date()), filter:'all', events:[], studentList:{ group: defaultStudentGroupName(), students:[], names:[] }, selectedColor:'#c8dff0', supabase:null, storageMode:'local', focusDate:null, detailsEvent:null, pendingScrollDate:isoDate(new Date()), adjustingScroll:false, viewMode:'week' };
 let appReady = false;
 let resumeRefreshTimer = null;
+if('scrollRestoration' in history) history.scrollRestoration = 'manual';
 
 const $ = id => document.getElementById(id);
 function startOfWeek(d){ const x=new Date(d); x.setHours(0,0,0,0); const day=x.getDay(); const diff=(day+6)%7; x.setDate(x.getDate()-diff); return x; }
@@ -136,6 +137,7 @@ async function init(){
   focusTodayOnLaunch();
   render();
   appReady = true;
+  forceTodayRailPosition();
 }
 function setupSupabase(){
   const url = window.TOD_DONNA_CALENDAR_SUPABASE_URL;
@@ -489,9 +491,8 @@ function setupAppResume(){
   document.addEventListener('visibilitychange', ()=>{
     if(!document.hidden) refreshTodayAfterResume();
   });
-  window.addEventListener('pageshow', event=>{
-    if(event.persisted) refreshTodayAfterResume();
-  });
+  window.addEventListener('pageshow', ()=>refreshTodayAfterResume());
+  window.addEventListener('focus', ()=>refreshTodayAfterResume());
 }
 function refreshTodayAfterResume(){
   if(!appReady || document.hidden) return;
@@ -499,7 +500,20 @@ function refreshTodayAfterResume(){
   resumeRefreshTimer=setTimeout(()=>{
     focusTodayOnLaunch();
     render();
-  }, 75);
+    forceTodayRailPosition();
+  }, 50);
+}
+function forceTodayRailPosition(){
+  const today=isoDate(new Date());
+  const place=()=>{
+    state.pendingScrollDate=today;
+    scrollRailToDate(today);
+  };
+  requestAnimationFrame(()=>{
+    place();
+    requestAnimationFrame(place);
+  });
+  [120,300,700,1200].forEach(ms=>setTimeout(place,ms));
 }
 function slotTimeFromPointer(ev, timeline){
   const rect = timeline.getBoundingClientRect();

@@ -1,7 +1,7 @@
 {
   "name": "Our Scheduler",
   "short_name": "Scheduler",
-  "start_url": "./index.html",
+  "start_url": "./index.html?v=1.32",
   "display": "standalone",
   "background_color": "#f6f3ee",
   "theme_color": "#236b3a",
