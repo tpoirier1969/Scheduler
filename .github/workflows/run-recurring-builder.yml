@@ -1,0 +1,41 @@
+name: Run recurring builder once
+on:
+  push:
+    branches: [main]
+permissions:
+  contents: write
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - name: Execute staged revised-scheduler transformation
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          src=Path('.github/workflows/build-recurring-actions-main.yml').read_text().splitlines()
+          start=None
+          end=None
+          for i,line in enumerate(src):
+            if line.strip()=='- name: Update revised scheduler': start=i
+            elif start is not None and line.strip()=='- name: Commit feature changes and remove builder': end=i; break
+          if start is None or end is None: raise SystemExit('builder run block not found')
+          run_line=next(i for i in range(start,end) if src[i].strip()=='run: |')
+          body=[]
+          for line in src[run_line+1:end]:
+            body.append(line[10:] if line.startswith('          ') else line)
+          Path('/tmp/recurring-builder.sh').write_text('\n'.join(body)+'\n')
+          PY
+          bash /tmp/recurring-builder.sh
+      - name: Commit finished revised scheduler
+        shell: bash
+        run: |
+          rm -f .github/workflows/build-recurring-actions-main.yml .github/workflows/run-recurring-builder.yml trigger-recurring-actions.txt
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add revised-scheduler/app.js revised-scheduler/index.html .github/workflows/build-recurring-actions-main.yml .github/workflows/run-recurring-builder.yml trigger-recurring-actions.txt
+          git commit -m 'Add recurring occurrence edit and delete scopes to revised scheduler'
+          git push origin main
