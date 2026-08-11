@@ -7,7 +7,7 @@ const PEOPLE = {
 const PRESET_DEFAULT = { Class:0, Lesson:1, Rehearsal:2, Meeting:3, Performance:4, 'No-show':6, Event:2, Doctor:0, Hair:1, Church:6, Appointment:2, Camping:0, Roadtrip:3, Shopping:1, Friends:4, Family:2, Other:7 };
 const START_HOUR = 6;
 const END_HOUR = 24;
-let state = { weekStart: startOfWeek(new Date()), filter:'all', events:[], studentList:{ group: defaultStudentGroupName(), students:[], names:[] }, selectedColor:'#c8dff0', supabase:null, storageMode:'local', focusDate:null, detailsEvent:null, pendingScrollDate:isoDate(new Date()), adjustingScroll:false, viewMode:'week' };
+let state = { weekStart: startOfWeek(new Date()), filter:'all', events:[], exceptions:[], studentList:{ group: defaultStudentGroupName(), students:[], names:[] }, selectedColor:'#c8dff0', supabase:null, storageMode:'local', focusDate:null, detailsEvent:null, pendingScrollDate:isoDate(new Date()), adjustingScroll:false, viewMode:'week', editScope:null };
 let appReady = false;
 let resumeRefreshTimer = null;
 if('scrollRestoration' in history) history.scrollRestoration = 'manual';
@@ -71,7 +71,7 @@ function recurringEventOccursOn(e,d){
     const weekStartBase=startOfWeek(base);
     const weekStartTarget=startOfWeek(target);
     const diffWeeks=Math.round((weekStartTarget-weekStartBase)/(86400000*7));
-    return diffWeeks > 0 && diffWeeks % interval === 0;
+    return diffWeeks >= 0 && diffWeeks % interval === 0;
   }
   if(unit==='month') return monthlyAnchorDate(base,target,interval);
   if(unit==='year'){
@@ -134,6 +134,7 @@ async function init(){
   fillPersonSelect();
   await loadStudentList();
   await loadEvents();
+  await loadExceptions();
   focusTodayOnLaunch();
   render();
   appReady = true;
@@ -189,6 +190,123 @@ async function loadEvents(){
   state.events=seedEvents();
   await saveAllLocal();
 }
+
+async function loadExceptions(){
+  if(state.storageMode==='supabase'){
+    const { data, error } = await state.supabase.from('tod_donna_calendar_event_exceptions').select('*');
+    if(error){
+      state.exceptions=[];
+      setSyncStatus('Recurring exceptions could not be loaded.', 'error');
+      showSyncError('Recurring occurrence changes could not be loaded.', error);
+      return;
+    }
+    state.exceptions=data||[];
+    localStorage.removeItem('tod_donna_calendar_event_exceptions_v1');
+    return;
+  }
+  try{ state.exceptions=JSON.parse(localStorage.getItem('tod_donna_calendar_event_exceptions_v1')||'[]'); }
+  catch{ state.exceptions=[]; }
+}
+function exceptionFor(parentId, originalDate){
+  return state.exceptions.find(x=>x.parent_event_id===parentId && x.original_event_date===originalDate) || null;
+}
+function parentEventFor(e){
+  const id=e?.parent_event_id || (e?.recurrence_rule?.enabled ? e.id : null);
+  return id ? state.events.find(x=>x.id===id) || null : null;
+}
+function previousDate(dateStr){ return isoDate(addDays(new Date(dateStr+'T00:00'),-1)); }
+async function saveException(ex){
+  const existing=exceptionFor(ex.parent_event_id,ex.original_event_date);
+  const row={
+    id:existing?.id || ex.id || uuid(),
+    parent_event_id:ex.parent_event_id,
+    original_event_date:ex.original_event_date,
+    exception_status:ex.exception_status,
+    new_event_date:ex.new_event_date||null,
+    new_start_time:ex.new_start_time||null,
+    new_end_time:ex.new_end_time||null,
+    new_title:ex.new_title||null,
+    new_notes:ex.new_notes||null
+  };
+  if(state.storageMode==='supabase'){
+    const { error }=await state.supabase.from('tod_donna_calendar_event_exceptions').upsert(row,{onConflict:'parent_event_id,original_event_date'});
+    if(error){ showSyncError('Recurring occurrence change was not saved.',error); throw error; }
+  }
+  const i=state.exceptions.findIndex(x=>x.parent_event_id===row.parent_event_id && x.original_event_date===row.original_event_date);
+  if(i>=0) state.exceptions[i]=row; else state.exceptions.push(row);
+  if(state.storageMode!=='supabase') localStorage.setItem('tod_donna_calendar_event_exceptions_v1',JSON.stringify(state.exceptions));
+}
+async function deleteException(parentId, originalDate){
+  if(state.storageMode==='supabase'){
+    const { error }=await state.supabase.from('tod_donna_calendar_event_exceptions').delete().eq('parent_event_id',parentId).eq('original_event_date',originalDate);
+    if(error){ showSyncError('Recurring occurrence reset failed.',error); throw error; }
+  }
+  state.exceptions=state.exceptions.filter(x=>!(x.parent_event_id===parentId && x.original_event_date===originalDate));
+  if(state.storageMode!=='supabase') localStorage.setItem('tod_donna_calendar_event_exceptions_v1',JSON.stringify(state.exceptions));
+}
+async function deleteExceptionsFrom(parentId, fromDate){
+  if(state.storageMode==='supabase'){
+    const { error }=await state.supabase.from('tod_donna_calendar_event_exceptions').delete().eq('parent_event_id',parentId).gte('original_event_date',fromDate);
+    if(error){ showSyncError('Future recurring exceptions could not be cleared.',error); throw error; }
+  }
+  state.exceptions=state.exceptions.filter(x=>x.parent_event_id!==parentId || x.original_event_date<fromDate);
+  if(state.storageMode!=='supabase') localStorage.setItem('tod_donna_calendar_event_exceptions_v1',JSON.stringify(state.exceptions));
+}
+function chooseSeriesScope(action){
+  const answer=window.prompt(`${action} recurring event:\n1 = This occurrence only\n2 = This and future occurrences\n3 = Entire series\n\nEnter 1, 2, or 3:`,'1');
+  if(answer===null) return null;
+  return ({'1':'occurrence','2':'future','3':'series'})[String(answer).trim()] || null;
+}
+function isSeriesOccurrence(e){ return !!(e?.recurring_instance || e?.recurrence_rule?.enabled); }
+async function handleDeleteDetails(){
+  const e=state.detailsEvent;
+  if(!e) return;
+  if(!isSeriesOccurrence(e)){
+    if(!confirm(`Delete “${e.title}”?`)) return;
+    await deleteEvent(e.id);
+    $('eventDetailsDialog').close(); render(); return;
+  }
+  const scope=chooseSeriesScope('Delete');
+  if(!scope) return;
+  const parent=parentEventFor(e);
+  if(!parent){ alert('The recurring series could not be found.'); return; }
+  const original=e.original_event_date || e.date;
+  if(scope==='occurrence'){
+    await saveException({parent_event_id:parent.id,original_event_date:original,exception_status:'cancelled'});
+  }else if(scope==='future'){
+    if(original<=parent.date){
+      await deleteEvent(parent.id);
+    }else{
+      await saveEvent({...parent,recurrence_rule:{...parent.recurrence_rule,until:previousDate(original)}});
+      await deleteExceptionsFrom(parent.id,original);
+    }
+  }else{
+    await deleteEvent(parent.id);
+  }
+  $('eventDetailsDialog').close(); render();
+}
+function handleEditDetails(){
+  const e=state.detailsEvent;
+  if(!e) return;
+  if(!isSeriesOccurrence(e)){
+    $('eventDetailsDialog').close(); openDialog(e); return;
+  }
+  const scope=chooseSeriesScope('Edit');
+  if(!scope) return;
+  const parent=parentEventFor(e);
+  if(!parent){ alert('The recurring series could not be found.'); return; }
+  const original=e.original_event_date || e.date;
+  $('eventDetailsDialog').close();
+  if(scope==='occurrence'){
+    openDialog(e,{type:'occurrence',parentId:parent.id,originalDate:original});
+  }else if(scope==='future'){
+    if(original<=parent.date) openDialog(parent,{type:'series'});
+    else openDialog({...e,id:parent.id,recurrence_rule:parent.recurrence_rule},{type:'future',parentId:parent.id,originalDate:original});
+  }else{
+    openDialog(parent,{type:'series'});
+  }
+}
+
 
 
 async function loadStudentList(){
@@ -319,12 +437,15 @@ async function deleteEvent(id){
       throw error;
     }
     state.events=state.events.filter(e=>e.id!==id);
+    state.exceptions=state.exceptions.filter(x=>x.parent_event_id!==id);
     localStorage.removeItem('tod_donna_calendar_events_v1');
     setSyncStatus('Deleted from shared calendar');
     return;
   }
   state.events=state.events.filter(e=>e.id!==id);
+  state.exceptions=state.exceptions.filter(x=>x.parent_event_id!==id);
   await saveAllLocal();
+  localStorage.setItem('tod_donna_calendar_event_exceptions_v1',JSON.stringify(state.exceptions));
 }
 async function saveAllLocal(){ localStorage.setItem('tod_donna_calendar_events_v1', JSON.stringify(state.events)); }
 function showSyncError(message, error){
@@ -390,8 +511,8 @@ function setupControls(){
   $('addStudentRowBtn').onclick=()=>addStudentEditorRow({name:'', standard_lesson_minutes:30});
   $('saveStudentsBtn').onclick=async()=>{ await saveStudentList(); $('studentListDialog').close(); };
   $('closeDetailsBtn').onclick=()=>$('eventDetailsDialog').close();
-  $('editDetailsBtn').onclick=()=>{ const e=state.detailsEvent; $('eventDetailsDialog').close(); if(e) openDialog(e); };
-  $('deleteDetailsBtn').onclick=async()=>{ const e=state.detailsEvent; if(e?.id && !e.recurring_instance){ await deleteEvent(e.id); $('eventDetailsDialog').close(); render(); } };
+  $('editDetailsBtn').onclick=()=>handleEditDetails();
+  $('deleteDetailsBtn').onclick=async()=>handleDeleteDetails();
   document.addEventListener('click', ev=>{ if(!ev.target.closest('.toolbar')) closeToolbarMenu(); });
 }
 function toggleToolbarMenu(){ const tb=document.querySelector('.toolbar'); const open=!tb.classList.contains('menu-open'); tb.classList.toggle('menu-open', open); $('navMenuBtn').setAttribute('aria-expanded', String(open)); }
@@ -581,7 +702,7 @@ function canToggleNoShow(e){ return !!e; }
 async function toggleNoShowForEvent(e){
   if(!e) return;
   if(e.recurring_instance){
-    alert('This is a recurring copy. Open the event details to edit the original series. Recurring exceptions are still a V2 item.');
+    alert('For a recurring occurrence, open Event Details and use Edit. Per-occurrence no-show status is not stored by the current exception schema.');
     return;
   }
   const updated={...e, status:e.status==='no_show'?'scheduled':'no_show'};
@@ -677,21 +798,47 @@ function fillPresetSelect(){ const p=$('personSelect').value||'donna'; $('preset
 function updateQuickAddVisibility(){ const row=$('studentQuickAddRow'); const hint=$('studentQuickAddHint'); if(!row) return; const show=$('personSelect').value==='donna'; row.classList.toggle('hidden', !show); if(hint) hint.classList.toggle('hidden', !show); }
 function applyStudentQuickAdd(name){ if(!name) return; const student=getStudentByName(name); $('eventTitle').value=name; $('personSelect').value='donna'; fillPresetSelect(); $('presetSelect').value='Lesson'; $('statusSelect').value='scheduled'; if(student){ const start=hmToMin($('startTime').value || '09:00'); $('endTime').value=minToHm(start + normalizeLessonMinutes(student.standard_lesson_minutes)); } state.selectedColor=PEOPLE.donna.palette[PRESET_DEFAULT.Lesson]; fillPalette(); updateQuickAddVisibility(); updateDuplicateWarning(); }
 function openStudentListDialog(){ state.studentList=normalizeStudentList(state.studentList); $('semesterNameInput').value=state.studentList.group || defaultStudentGroupName(); renderStudentEditorRows(); $('studentListDialog').showModal(); }
-function fillPalette(){ const p=$('personSelect').value||'donna'; $('colorPalette').innerHTML=''; PEOPLE[p].palette.forEach(c=>{ const b=document.createElement('button'); b.type='button'; b.className='color-swatch'+(c===state.selectedColor?' selected':''); b.style.background=c; b.title=c; b.onclick=()=>{ state.selectedColor=c; fillPalette(); }; $('colorPalette').appendChild(b); }); }
+function fillPalette(){ const p=$('personSelect').value||'donna'; $('colorPalette').innerHTML=''; PEOPLE[p].palette.forEach(c=>{ const b=document.createElement('button'); b.type='button'; b.disabled=state.editScope?.type==='occurrence'; b.className='color-swatch'+(c===state.selectedColor?' selected':''); b.style.background=c; b.title=c; b.onclick=()=>{ state.selectedColor=c; fillPalette(); }; $('colorPalette').appendChild(b); }); }
 
+function materializeSeriesOccurrence(parent, originalDate){
+  const ex=exceptionFor(parent.id,originalDate);
+  if(ex?.exception_status==='cancelled') return null;
+  return {
+    ...parent,
+    id:parent.id+'__'+originalDate,
+    parent_event_id:parent.id,
+    original_event_date:originalDate,
+    recurring_instance:true,
+    recurrence_exception_id:ex?.id||null,
+    date:ex?.new_event_date||originalDate,
+    start_time:(ex?.new_start_time||parent.start_time||'00:00').slice(0,5),
+    end_time:(ex?.new_end_time||parent.end_time||'23:59').slice(0,5),
+    title:ex?.new_title ?? parent.title,
+    notes:ex?.new_notes ?? parent.notes
+  };
+}
 function expandEventsForRange(rangeStart, rangeDays){
   const start=isoDate(rangeStart), end=isoDate(addDays(rangeStart,rangeDays));
   let out=[];
   for(const e of state.events){
-    if(e.date>=start && e.date<end) out.push(e);
-    if(e.recurrence_rule?.enabled){
-      for(let i=0;i<rangeDays;i++){
-        const d=addDays(rangeStart,i);
-        const ds=isoDate(d);
-        if(recurringEventOccursOn(e,d)) out.push({...e, id:e.id+'__'+ds, date:ds, recurring_instance:true});
+    if(!e.recurrence_rule?.enabled){
+      if(e.date>=start && e.date<end) out.push(e);
+      continue;
+    }
+    for(let i=0;i<rangeDays;i++){
+      const d=addDays(rangeStart,i);
+      const ds=isoDate(d);
+      if(ds===e.date || recurringEventOccursOn(e,d)){
+        const item=materializeSeriesOccurrence(e,ds);
+        if(item && item.date>=start && item.date<end) out.push(item);
       }
     }
+    for(const ex of state.exceptions.filter(x=>x.parent_event_id===e.id && x.new_event_date && x.new_event_date>=start && x.new_event_date<end && (x.original_event_date<start || x.original_event_date>=end))){
+      const item=materializeSeriesOccurrence(e,ex.original_event_date);
+      if(item) out.push(item);
+    }
   }
+  out=[...new Map(out.map(e=>[e.id+'|'+e.date,e])).values()];
   if(state.filter!=='all') out=out.filter(e=>e.person_key===state.filter);
   return out;
 }
@@ -886,17 +1033,19 @@ async function setDetailsStatusFlag(flag, checked){
   const e=state.detailsEvent;
   if(!e) return;
   if(e.recurring_instance){
-    alert('This is a recurring copy. Recurring occurrence edits are still a V2 item.');
-    render();
-    return;
+    const parent=parentEventFor(e);
+    const original=e.original_event_date||e.date;
+    if(flag==='cancelled'){
+      if(checked) await saveException({parent_event_id:parent.id,original_event_date:original,exception_status:'cancelled'});
+      else await deleteException(parent.id,original);
+      $('eventDetailsDialog').close(); render(); return;
+    }
+    alert('Per-occurrence no-show status needs a schema extension; use Edit for title/date/time/notes or Cancelled to remove this occurrence.');
+    render(); return;
   }
   const updated={...e};
-  if(flag==='no_show'){
-    updated.status = checked ? 'no_show' : 'scheduled';
-  }
-  if(flag==='cancelled'){
-    updated.status = checked ? 'cancelled' : 'scheduled';
-  }
+  if(flag==='no_show') updated.status = checked ? 'no_show' : 'scheduled';
+  if(flag==='cancelled') updated.status = checked ? 'cancelled' : 'scheduled';
   await saveEvent(updated);
   state.detailsEvent=updated;
   render();
@@ -908,7 +1057,7 @@ function openDetails(e){
   const person=PEOPLE[e.person_key]?.label||e.person_key;
   const status=e.status==='no_show'?'No-show':(e.status==='cancelled'?'Cancelled':'Scheduled');
   const recurrence=recurrenceLabel(e.recurrence_rule);
-  $('deleteDetailsBtn').classList.toggle('hidden', !!e.recurring_instance);
+  $('deleteDetailsBtn').classList.remove('hidden');
   $('eventDetailsContent').innerHTML=`
     <div class="detail-main-title"><span class="detail-dot" style="background:${escapeHtml(e.color||'#ddd')}"></span>${escapeHtml(e.title)}</div>
     <div class="detail-status-toggles">
@@ -928,11 +1077,15 @@ function openDetails(e){
   if(ns) ns.onchange=ev=>setDetailsStatusFlag('no_show', ev.target.checked);
   if(cc) cc.onchange=ev=>setDetailsStatusFlag('cancelled', ev.target.checked);
 }
-function openDialog(e){
+function openDialog(e, editScope=null){
+  state.editScope=editScope;
   $('dialogTitle').textContent=e.id?'Edit':'+ Add'; $('eventId').value=e.id||''; $('eventTitle').value=e.title||''; $('personSelect').value=e.person_key||'donna'; fillPresetSelect(); $('presetSelect').value=e.preset_name||PEOPLE[$('personSelect').value].presets[0];
   $('eventDate').value=e.date||isoDate(state.weekStart); $('startTime').value=e.start_time||'09:00'; $('endTime').value=e.end_time||'09:30'; if($('allDayCheck')) $('allDayCheck').checked=!!e.is_all_day; updateAllDayControls(); $('statusSelect').value=e.status||'scheduled'; $('eventNotes').value=e.notes||''; state.selectedColor=e.color||PEOPLE[$('personSelect').value].palette[0]; fillPalette(); fillStudentQuickAddSelect(); if($('studentQuickAddSelect')) $('studentQuickAddSelect').value=''; updateQuickAddVisibility();
   $('repeatToggle').checked=!!e.recurrence_rule?.enabled; $('repeatControls').classList.toggle('hidden',!$('repeatToggle').checked); const repeatParts=getRepeatParts(e.recurrence_rule||{frequency:'weekly'}); $('repeatInterval').value=repeatParts.interval; $('repeatUnit').value=repeatParts.unit; $('repeatUntil').value=e.recurrence_rule?.until||''; document.querySelectorAll('.weekday-picker input').forEach(ch=>ch.checked=e.recurrence_rule?.days?.map(String).includes(ch.value)||false);
-  $('deleteEventBtn').classList.toggle('hidden',!e.id || e.recurring_instance); updateEventDateButton(); updateDuplicateWarning(); $('eventDialog').showModal(); setTimeout(()=>$('eventDialog').focus({preventScroll:true}), 0);
+  const occurrenceOnly=state.editScope?.type==='occurrence';
+  ['personSelect','presetSelect','allDayCheck','statusSelect','repeatToggle','repeatInterval','repeatUnit','repeatUntil'].forEach(id=>{ const el=$(id); if(el) el.disabled=occurrenceOnly; });
+  document.querySelectorAll('.weekday-picker input').forEach(el=>el.disabled=occurrenceOnly);
+  $('deleteEventBtn').classList.toggle('hidden',!e.id || occurrenceOnly || e.recurring_instance); updateEventDateButton(); updateDuplicateWarning(); $('eventDialog').showModal(); setTimeout(()=>$('eventDialog').focus({preventScroll:true}), 0);
 }
 async function submitForm(){
   const repeatUnit=normalizeRepeatUnit($('repeatUnit').value);
@@ -940,7 +1093,36 @@ async function submitForm(){
   const isAllDay=!!$('allDayCheck')?.checked;
   const e={ id:$('eventId').value||uuid(), title:$('eventTitle').value.trim(), person_key:$('personSelect').value, preset_name:$('presetSelect').value, date:$('eventDate').value, start_time:isAllDay?'00:00':$('startTime').value, end_time:isAllDay?'23:59':$('endTime').value, is_all_day:isAllDay, status:$('statusSelect').value, color:state.selectedColor, notes:$('eventNotes').value.trim(), recurrence_rule:rec };
   if(!e.is_all_day && hmToMin(e.end_time)<=hmToMin(e.start_time)){ alert('End time has to be after start time. Time goblin denied.'); return; }
+  const scope=state.editScope;
   try{
+    if(scope?.type==='occurrence'){
+      const moved=e.date!==scope.originalDate;
+      await saveException({
+        parent_event_id:scope.parentId,
+        original_event_date:scope.originalDate,
+        exception_status:moved?'moved':'modified',
+        new_event_date:moved?e.date:null,
+        new_start_time:e.start_time,
+        new_end_time:e.end_time,
+        new_title:e.title,
+        new_notes:e.notes
+      });
+      state.editScope=null;
+      $('eventDialog').close(); render(); return;
+    }
+    if(scope?.type==='future'){
+      const parent=state.events.find(x=>x.id===scope.parentId);
+      if(!parent) throw new Error('Recurring parent series was not found.');
+      if(scope.originalDate<=parent.date){
+        await saveEvent({...e,id:parent.id});
+      }else{
+        await saveEvent({...parent,recurrence_rule:{...parent.recurrence_rule,until:previousDate(scope.originalDate)}});
+        await deleteExceptionsFrom(parent.id,scope.originalDate);
+        await saveEvent({...e,id:uuid(),recurrence_rule:e.recurrence_rule?.enabled?e.recurrence_rule:parent.recurrence_rule});
+      }
+      state.editScope=null;
+      $('eventDialog').close(); render(); return;
+    }
     await saveEvent(e);
   }catch(err){
     return;
