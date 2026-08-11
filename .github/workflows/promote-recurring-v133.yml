@@ -1,0 +1,40 @@
+name: Promote recurring actions to live Scheduler V1.33
+on:
+  push:
+    branches: [main]
+    paths: ['.release-v133-trigger']
+permissions:
+  contents: write
+jobs:
+  promote:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Promote revised recurrence logic to live root
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp revised-scheduler/app.js app.js
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('index.html')
+          s=p.read_text()
+          s=s.replace('V1.32 · shared weekly planner','V1.33 · shared weekly planner')
+          s=s.replace('app.js?v=1.32','app.js?v=1.33')
+          p.write_text(s)
+          PY
+          node --check app.js
+          grep -q 'V1.33 · shared weekly planner' index.html
+          grep -q 'app.js?v=1.33' index.html
+          grep -q 'chooseSeriesScope' app.js
+          grep -q 'tod_donna_calendar_event_exceptions' app.js
+      - name: Commit live release and remove release machinery
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -f .release-v133-trigger .github/workflows/promote-recurring-v133.yml
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add app.js index.html .release-v133-trigger .github/workflows/promote-recurring-v133.yml
+          git commit -m 'Release Scheduler V1.33 recurring occurrence actions'
+          git push
