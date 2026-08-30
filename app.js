@@ -814,7 +814,10 @@ function materializeSeriesOccurrence(parent, originalDate){
     start_time:(ex?.new_start_time||parent.start_time||'00:00').slice(0,5),
     end_time:(ex?.new_end_time||parent.end_time||'23:59').slice(0,5),
     title:ex?.new_title ?? parent.title,
-    notes:ex?.new_notes ?? parent.notes
+    notes:ex?.new_notes ?? parent.notes,
+    // A cancellation/no-show belongs to the historical source occurrence, not every future repeat.
+    // Recurring exceptions handle later occurrence cancellations individually.
+    status: originalDate===parent.date ? parent.status : 'scheduled'
   };
 }
 function expandEventsForRange(rangeStart, rangeDays){
