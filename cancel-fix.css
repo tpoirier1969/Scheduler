@@ -1,0 +1,2 @@
+.cancelled { opacity:.58; }
+.cancelled .event-title { text-decoration:line-through; text-decoration-thickness:1.5px; }
