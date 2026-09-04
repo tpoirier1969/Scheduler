@@ -1,0 +1,27 @@
+/* Poirier's Planner task layer */
+.planner-task-panel{border-bottom:1px solid rgba(33,55,45,.14);background:rgba(255,255,255,.7);position:relative;z-index:3}
+.planner-task-toggle{width:100%;display:flex;align-items:center;gap:.35rem;border:0;background:transparent;padding:.36rem .48rem;font:inherit;font-size:.78rem;font-weight:700;color:#315143;cursor:pointer;text-align:left}
+.planner-task-count{min-width:1.45rem;padding:.05rem .35rem;border-radius:999px;background:#e6eee9;text-align:center;font-variant-numeric:tabular-nums}
+.planner-task-chevron{margin-left:auto}
+.planner-task-body{padding:.1rem .35rem .45rem;background:#fafbf9}
+.planner-task-body.hidden{display:none}
+.planner-task-row{display:flex;align-items:flex-start;gap:.35rem;border-bottom:1px solid rgba(33,55,45,.08)}
+.planner-task-check{padding:.43rem .12rem .3rem .18rem}
+.planner-task-check input{width:1rem;height:1rem;accent-color:#236b3a}
+.planner-task-edit{flex:1;min-width:0;border:0;background:transparent;text-align:left;padding:.35rem .15rem;cursor:pointer;color:inherit}
+.planner-task-edit strong{display:block;font-size:.77rem;line-height:1.15;overflow-wrap:anywhere}
+.planner-task-edit small{display:block;margin-top:.12rem;font-size:.66rem;font-weight:400;opacity:.68;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.planner-task-add{width:100%;border:0;background:transparent;padding:.38rem .25rem .1rem;text-align:left;font-size:.72rem;font-weight:700;color:#236b3a;cursor:pointer}
+.planner-task-unavailable{padding:.35rem .45rem;font-size:.67rem;color:#7b503c;background:#fff5ef}
+.task-dialog{max-width:min(92vw,460px);width:100%;border:0;border-radius:14px;padding:0;box-shadow:0 18px 60px rgba(0,0,0,.25)}
+.task-dialog::backdrop{background:rgba(0,0,0,.32)}
+.task-form{display:grid;gap:.85rem;padding:1rem}
+.task-form label{display:grid;gap:.28rem;font-weight:650;font-size:.86rem}
+.task-form input,.task-form select,.task-form textarea{font:inherit;padding:.55rem .6rem;border:1px solid #b9c5bd;border-radius:8px;background:#fff;color:#17251e}
+.task-when-fieldset{display:grid;gap:.45rem;border:1px solid #d4ddd7;border-radius:10px;padding:.7rem .8rem}
+.task-when-fieldset legend{padding:0 .25rem;font-weight:750;font-size:.82rem}
+.task-when-fieldset label{display:flex;grid-template-columns:none;align-items:flex-start;gap:.5rem;font-weight:500}
+.task-when-fieldset input{margin-top:.1rem}
+.task-form menu{display:flex;justify-content:flex-end;gap:.5rem;margin:.2rem 0 0;padding:0}
+.task-form .hidden{display:none!important}
+@media(max-width:760px){.planner-task-toggle{font-size:.72rem;padding:.32rem .4rem}.planner-task-edit strong{font-size:.72rem}.planner-task-edit small{font-size:.62rem}.task-dialog{max-width:calc(100vw - 18px)}}
