@@ -21,7 +21,8 @@
       notes:row.notes||'',
       person_key:row.person_key||'shared',
       task_mode:row.task_mode||MODES.TIMELESS,
-      task_date:row.task_date||null,
+      assigned_date:row.assigned_date||null,
+      priority:row.priority||'normal',
       completed:!!row.completed,
       completed_at:row.completed_at||null,
       sort_order:Number(row.sort_order||0),
@@ -33,8 +34,8 @@
   function visibleOnDate(task,dateStr){
     if(!task || task.completed) return false;
     if(task.task_mode===MODES.TIMELESS) return true;
-    if(task.task_mode===MODES.FROM_DATE) return !!task.task_date && dateStr>=task.task_date;
-    if(task.task_mode===MODES.SPECIFIC_DATE) return task.task_date===dateStr;
+    if(task.task_mode===MODES.FROM_DATE) return !!task.assigned_date && dateStr>=task.assigned_date;
+    if(task.task_mode===MODES.SPECIFIC_DATE) return task.assigned_date===dateStr;
     return false;
   }
 
@@ -47,7 +48,12 @@
 
   function tasksForDate(dateStr){
     return tasks.filter(t=>visibleOnDate(t,dateStr) && matchesCalendarFilter(t))
-      .sort((a,b)=>(a.sort_order-b.sort_order) || String(a.task_date||'').localeCompare(String(b.task_date||'')) || a.title.localeCompare(b.title));
+      .sort((a,b)=>{
+        if(a.priority!==b.priority) return a.priority==='important' ? -1 : 1;
+        return (a.sort_order-b.sort_order)
+          || String(a.assigned_date||'').localeCompare(String(b.assigned_date||''))
+          || a.title.localeCompare(b.title);
+      });
   }
 
   async function loadTasks(){
@@ -80,7 +86,8 @@
       notes:task.notes||null,
       person_key:task.person_key,
       task_mode:task.task_mode,
-      task_date:task.task_mode===MODES.TIMELESS?null:task.task_date,
+      assigned_date:task.task_mode===MODES.TIMELESS?null:task.assigned_date,
+      priority:task.priority||'normal',
       completed:!!task.completed,
       completed_at:task.completed_at||null,
       sort_order:Number(task.sort_order||0)
@@ -116,6 +123,7 @@
         <input id="taskId" type="hidden" />
         <label>Task <input id="taskTitle" maxlength="240" required autocomplete="off" /></label>
         <label>For <select id="taskPerson"></select></label>
+        <label class="task-important"><input id="taskImportant" type="checkbox" /> Important</label>
         <fieldset class="task-when-fieldset">
           <legend>When should it show?</legend>
           <label><input type="radio" name="taskMode" value="timeless" checked /> Keep showing until done</label>
@@ -155,10 +163,11 @@
     byId('taskTitle').value=task?.title||'';
     byId('taskNotes').value=task?.notes||'';
     byId('taskPerson').value=task?.person_key||'shared';
+    byId('taskImportant').checked=(task?.priority||'normal')==='important';
     const mode=task?.task_mode || (dateStr?MODES.FROM_DATE:MODES.TIMELESS);
     const radio=dialog.querySelector(`input[name="taskMode"][value="${mode}"]`);
     if(radio) radio.checked=true;
-    byId('taskDate').value=task?.task_date || dateStr || todayIso();
+    byId('taskDate').value=task?.assigned_date || dateStr || todayIso();
     byId('deleteTaskBtn').classList.toggle('hidden',!edit);
     updateTaskDateVisibility();
     dialog.showModal();
@@ -177,7 +186,8 @@
       notes:byId('taskNotes').value.trim(),
       person_key:byId('taskPerson').value||'shared',
       task_mode:mode,
-      task_date:mode===MODES.TIMELESS?null:byId('taskDate').value,
+      assigned_date:mode===MODES.TIMELESS?null:byId('taskDate').value,
+      priority:byId('taskImportant').checked?'important':'normal',
       completed:existing?.completed||false,
       completed_at:existing?.completed_at||null,
       sort_order:existing?.sort_order||0
@@ -221,11 +231,11 @@
 
   function taskRow(task){
     const row=document.createElement('div');
-    row.className='planner-task-row';
+    row.className='planner-task-row'+(task.priority==='important'?' important':'');
     row.innerHTML=`<label class="planner-task-check"><input type="checkbox" aria-label="Complete ${esc(task.title)}" /><span></span></label>
-      <button type="button" class="planner-task-edit"><strong>${esc(task.title)}</strong><small>${esc(personLabel(task.person_key))}${task.notes?' · '+esc(task.notes):''}</small></button>`;
+      <button type="button" class="planner-task-edit"><strong>${task.priority==='important'?'! ':''}${esc(task.title)}</strong><small>${esc(personLabel(task.person_key))}${task.notes?' · '+esc(task.notes):''}</small></button>`;
     row.querySelector('input').addEventListener('change',ev=>setTaskCompleted(task.id,ev.target.checked));
-    row.querySelector('.planner-task-edit').onclick=()=>openTaskDialog(task.task_date||todayIso(),task);
+    row.querySelector('.planner-task-edit').onclick=()=>openTaskDialog(task.assigned_date||todayIso(),task);
     return row;
   }
 
