@@ -2,7 +2,7 @@
 .planner-task-panel{border-bottom:1px solid rgba(33,55,45,.14);background:rgba(255,255,255,.7);position:relative;z-index:3}
 .planner-task-toggle{width:100%;display:flex;align-items:center;gap:.35rem;border:0;background:transparent;padding:.36rem .48rem;font:inherit;font-size:.78rem;font-weight:700;color:#315143;cursor:pointer;text-align:left}
 .planner-task-count{min-width:1.45rem;padding:.05rem .35rem;border-radius:999px;background:#e6eee9;text-align:center;font-variant-numeric:tabular-nums}
-.planner-task-chevron{margin-left:auto}
+.planner-task-chevron{margin-left:auto;font-size:1rem;line-height:1;font-weight:800}
 .planner-task-body{padding:.1rem .35rem .45rem;background:#fafbf9}
 .planner-task-body.hidden{display:none}
 .planner-task-row{display:flex;align-items:flex-start;gap:.35rem;border-bottom:1px solid rgba(33,55,45,.08)}
