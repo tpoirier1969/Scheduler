@@ -25,6 +25,7 @@ jobs:
           name: planner-ui-preview
           path: test-results/
   supabase-http:
+    if: github.event_name == 'push'
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:

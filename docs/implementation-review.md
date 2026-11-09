@@ -35,3 +35,9 @@ Before production approval:
 `node tests/database.mjs /absolute/path/scheduler-backup-2026-11-09.json` restores the private snapshot into local embedded PostgreSQL only, validates every row by canonical JSON/hash, creates constraints/indexes/policies/triggers/functions, applies additive SQL twice and tests write/rollback/conflict behavior. Do not commit the snapshot. All 676 saved rows across eight tables restored identically in the initial rehearsal. The backup is app-scoped, not Auth/Storage/unrelated projects.
 
 Run `npm run version:assets` after asset edits; `npm test` rejects a stale release hash. No production data, secrets or backup contents belong in this public repository.
+
+## Safe browser preview (working branch only)
+
+Open https://raw.githack.com/tpoirier1969/Scheduler/work/planner-preserve-history-2026-11-09/preview.html to test the interface without merging into main. The branch's `preview.html` deliberately removes the hosted Supabase client and `config.js`, injects synthetic appointments and one fictional student into browser-local storage, and displays a visible sample-data warning. Never enter real appointment information on the third-party preview service. The Reset sample data button clears and reinitializes only the preview's sample records.
+
+The preview page is not a hosted database integration test. The `supabase-http` CI job separately tests a disposable local Supabase PostgREST instance and anonymous browser role. Production schema and data are unchanged.

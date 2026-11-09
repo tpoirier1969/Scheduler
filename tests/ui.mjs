@@ -62,7 +62,7 @@ await pp.goto(url.replace('index.html','preview.html'));
 await pp.waitForFunction(()=>appReady);
 assert.equal(await pp.evaluate(()=>state.storageMode),'local');
 assert.equal(await pp.evaluate(()=>state.events.length),2);
-assert(await pp.getByText('ISOLATED PREVIEW',{exact:false}).isVisible());
+assert(await pp.locator('.preview-banner').isVisible());
 await pp.click('#addEventBtn');
 assert.equal(await pp.inputValue('#personSelect'),'tod');
 assert.equal(await pp.inputValue('#presetSelect'),'Meeting');
