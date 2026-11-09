@@ -104,7 +104,7 @@ await pp.selectOption('#defaultPersonSetting','frank');
 await pp.click('#navMenuBtn');
 await pp.click('#addEventBtn');
 assert.equal(await pp.inputValue('#personSelect'),'frank');
-assert.equal(await pp.inputValue('#presetSelect'),'Appointment');
+assert.equal(await pp.inputValue('#presetSelect'),'Doctor');
 await pp.click('#cancelEventBtn');
 assert.deepEqual(remoteRequests,[],'Preview must never request the live Supabase project');
 await pc.close();
