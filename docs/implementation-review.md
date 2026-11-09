@@ -45,3 +45,7 @@ The preview page is not a hosted database integration test. The `supabase-http` 
 ## Device-specific Default Person
 
 In the Planner toolbar menu, select **Default Person (this device)** to choose Tod, Donna, Frank, or Shared. Stored in this browser's `planner_default_person` localStorage key and applied to newly created appointments only. Changing Person while adding or editing a calendar event never changes this setting. Existing saved preferences remain until deliberately changed. The isolated preview uses a separate browser origin and synthetic data; Reset sample data does not reset the default-person preference.
+
+## Default Person display consistency
+
+Once initialized, the on-screen Default Person selection is authoritative for new appointments in this tab. The setting remains local to that browser and responds to storage events from other same-origin tabs. Regression tests make persisted storage stale while the menu shows Donna; new events must still default to Donna. The isolated preview also tests the menu on a mobile-sized browser.

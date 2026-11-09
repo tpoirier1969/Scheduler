@@ -373,6 +373,12 @@ function setupControls(){
   const defaultPersonSetting = $('defaultPersonSetting');
   if(defaultPersonSetting){
     defaultPersonSetting.value=defaultPerson();
+    defaultPersonSetting.dataset.ready='true';
+    window.addEventListener('storage',event=>{
+      if(event.key==='planner_default_person'){
+        defaultPersonSetting.value=PEOPLE[event.newValue]?event.newValue:'tod';
+      }
+    });
     defaultPersonSetting.onchange=()=>{
       const selected=defaultPersonSetting.value;
       if(!PEOPLE[selected]){ defaultPersonSetting.value=defaultPerson(); return; }

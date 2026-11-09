@@ -16,7 +16,9 @@ run("openDialog({date:'2026-11-09'})");assert.equal($('personSelect').value,'tod
 assert.equal($('defaultPersonSetting').value,'tod');
 $('defaultPersonSetting').value='donna';$('defaultPersonSetting').dispatchEvent(new w.Event('change'));
 assert.equal(w.localStorage.getItem('planner_default_person'),'donna');
-run("openDialog({date:'2026-11-09'})");assert.equal($('personSelect').value,'donna');assert.equal($('presetSelect').value,'Lesson');
+w.localStorage.setItem('planner_default_person','tod');
+run("openDialog({date:'2026-11-09'})");assert.equal($('personSelect').value,'donna');assert.equal($('presetSelect').value,'Lesson');assert.equal($('defaultPersonSetting').value,'donna');
+w.localStorage.setItem('planner_default_person','donna');
 $('personSelect').value='tod';$('personSelect').dispatchEvent(new w.Event('change'));$('eventDialog').close();
 assert.equal(w.localStorage.getItem('planner_default_person'),'donna');
 run("openDialog({date:'2026-11-09'})");assert.equal($('personSelect').value,'donna');$('eventDialog').close();

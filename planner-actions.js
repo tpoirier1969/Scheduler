@@ -1,5 +1,11 @@
 const DELETED_OCCURRENCE_SENTINEL='__TOD_DONNA_DELETE_OCCURRENCE__';
-function defaultPerson(){try{const p=localStorage.getItem('planner_default_person');return ['tod','donna','frank','shared'].includes(p)?p:'tod';}catch{return 'tod';}}
+function defaultPerson(){
+ const valid=['tod','donna','frank','shared'];
+ const setting=document.getElementById('defaultPersonSetting');
+ // Once initialized, the menu's displayed value must win over stale browser storage.
+ if(setting?.dataset.ready==='true' && valid.includes(setting.value))return setting.value;
+ try{const p=localStorage.getItem('planner_default_person');return valid.includes(p)?p:'tod';}catch{return 'tod';}
+}
 function defaultPreset(person){return person==='donna'?'Lesson':person==='tod'?'Meeting':PEOPLE[person].presets[0];}
 function statusBadge(e){return e.status==='scheduled'?'':`<span class="status-badge">${e.status==='no_show'?'NO-SHOW':'CANCELLED'}</span>`;}
 function exceptionChange(parent,original,patch){

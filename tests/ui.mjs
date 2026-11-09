@@ -26,10 +26,13 @@ await page.evaluate(()=>openDialog({date:'2026-11-10'}));assert.equal(await page
 assert.equal(await page.inputValue('#defaultPersonSetting'),'tod');
 await page.selectOption('#defaultPersonSetting','donna');
 assert.equal(await page.evaluate(()=>localStorage.getItem('planner_default_person')),'donna');
+// Simulate a stale browser preference: the displayed menu still says Donna.
+await page.evaluate(()=>localStorage.setItem('planner_default_person','tod'));
 await page.evaluate(()=>openDialog({date:'2026-11-10'}));
 assert.equal(await page.inputValue('#personSelect'),'donna');
 assert.equal(await page.inputValue('#presetSelect'),'Lesson');
 await page.selectOption('#personSelect','tod');await page.click('#cancelEventBtn');
+await page.evaluate(()=>localStorage.setItem('planner_default_person','donna'));
 await page.evaluate(()=>openDialog({date:'2026-11-10'}));
 assert.equal(await page.inputValue('#personSelect'),'donna');await page.click('#cancelEventBtn');
 await page.reload();await page.waitForFunction(()=>appReady);
@@ -97,6 +100,12 @@ assert.equal(await pp.inputValue('#defaultPersonSetting'),'donna');
 await pp.setViewportSize({width:390,height:844});
 await pp.click('#navMenuBtn');
 assert(await pp.locator('#defaultPersonSetting').isVisible());
+await pp.selectOption('#defaultPersonSetting','frank');
+await pp.click('#navMenuBtn');
+await pp.click('#addEventBtn');
+assert.equal(await pp.inputValue('#personSelect'),'frank');
+assert.equal(await pp.inputValue('#presetSelect'),'Appointment');
+await pp.click('#cancelEventBtn');
 assert.deepEqual(remoteRequests,[],'Preview must never request the live Supabase project');
 await pc.close();
 console.log('PASS isolated browser preview: synthetic-only data, no hosted API access, expected Person defaults.');
