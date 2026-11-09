@@ -28,6 +28,7 @@ await page.evaluate(async()=>{const parent=state.events[0];await saveException({
 await page.check('#detailNoShowCheck');await page.waitForFunction(()=>state.exceptions[0].occurrence_status==='no_show');
 assert.equal(await page.evaluate(()=>materializeSeriesOccurrence(state.events[0],'2026-11-09').notes),'Edited notes');assert.equal(await page.evaluate(()=>materializeSeriesOccurrence(state.events[0],'2026-11-16').status),'scheduled');
 assert(await page.locator('.status-badge').filter({hasText:'NO-SHOW'}).count());
+assert(await page.locator('.event-block.no-show .status-badge').first().evaluate(el=>{const a=el.getBoundingClientRect(),b=el.closest('.event-block').getBoundingClientRect();return a.top>=b.top-1&&a.bottom<=b.bottom+1;}));
 // Cancel the next two appointments, exact dates counted from recurrence.
 await page.evaluate(()=>openDetails(materializeSeriesOccurrence(state.events[0],'2026-11-16')));await page.check('#detailCancelCheck');await page.screenshot({path:'test-results/cancellation-options-desktop.png',fullPage:true});await page.locator('.scope-dialog input[value="number"]').check();await page.locator('.scope-dialog input[name="count"]').fill('2');await page.locator('.scope-dialog button[value="continue"]').click();await page.waitForFunction(()=>state.exceptions.filter(x=>x.occurrence_status==='cancelled').length===2);
 assert.deepEqual(await page.evaluate(()=>state.exceptions.filter(x=>x.occurrence_status==='cancelled').map(x=>x.original_event_date).sort()),['2026-11-16','2026-11-23']);
