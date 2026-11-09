@@ -1,7 +1,7 @@
 {
   "name": "Poirier's Planner",
   "short_name": "Planner",
-  "start_url": "./index.html?v=2.0-a0fd82780ef8",
+  "start_url": "./index.html?v=2.0-f4f30525606e",
   "display": "standalone",
   "background_color": "#f6f3ee",
   "theme_color": "#236b3a",

@@ -3,8 +3,8 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import http from 'node:http';
 import path from 'node:path';
-const root=process.cwd();
-const server=http.createServer((req,res)=>{const f=path.join(root,decodeURIComponent(new URL(req.url,'http://localhost').pathname));if(!f.startsWith(root+'/')){res.writeHead(403).end();return;}fs.readFile(f,(e,data)=>{if(e){res.writeHead(404).end();return;}res.setHeader('Content-Type',f.endsWith('.js')?'text/javascript':f.endsWith('.css')?'text/css':f.endsWith('.json')?'application/json':'text/html');res.end(data);});});
+const root=process.cwd();fs.mkdirSync('test-results',{recursive:true});
+const server=http.createServer((req,res)=>{const f=path.join(root,decodeURIComponent(new URL(req.url,'http://localhost').pathname));if(!f.startsWith(root+'/')){res.writeHead(403).end();return;}fs.readFile(f,(e,data)=>{if(e){res.writeHead(404).end();return;}res.setHeader('Content-Type',f.endsWith('.js')?'text/javascript':f.endsWith('.css')?'text/css':f.endsWith('.json')?'application/json':f.endsWith('.svg')?'image/svg+xml':f.endsWith('.png')?'image/png':'text/html');res.end(data);});});
 await new Promise(r=>server.listen(0,'127.0.0.1',r));const url=`http://127.0.0.1:${server.address().port}/index.html`;
 const browser=await chromium.launch({...(process.env.CHROMIUM_PATH?{executablePath:process.env.CHROMIUM_PATH}:{}),headless:true,args:['--no-sandbox']});
 const context=await browser.newContext({timezoneId:'America/New_York'});const page=await context.newPage();page.setDefaultTimeout(15000);page.setDefaultNavigationTimeout(15000);let errors=[];page.on('pageerror',e=>{errors.push(e.message);console.error('PAGE ERROR:',e.message);});
@@ -29,7 +29,7 @@ await page.check('#detailNoShowCheck');await page.waitForFunction(()=>state.exce
 assert.equal(await page.evaluate(()=>materializeSeriesOccurrence(state.events[0],'2026-11-09').notes),'Edited notes');assert.equal(await page.evaluate(()=>materializeSeriesOccurrence(state.events[0],'2026-11-16').status),'scheduled');
 assert(await page.locator('.status-badge').filter({hasText:'NO-SHOW'}).count());
 // Cancel the next two appointments, exact dates counted from recurrence.
-await page.evaluate(()=>openDetails(materializeSeriesOccurrence(state.events[0],'2026-11-16')));await page.check('#detailCancelCheck');await page.locator('.scope-dialog input[value="number"]').check();await page.locator('.scope-dialog input[name="count"]').fill('2');await page.locator('.scope-dialog button[value="continue"]').click();await page.waitForFunction(()=>state.exceptions.filter(x=>x.occurrence_status==='cancelled').length===2);
+await page.evaluate(()=>openDetails(materializeSeriesOccurrence(state.events[0],'2026-11-16')));await page.check('#detailCancelCheck');await page.screenshot({path:'test-results/cancellation-options-desktop.png',fullPage:true});await page.locator('.scope-dialog input[value="number"]').check();await page.locator('.scope-dialog input[name="count"]').fill('2');await page.locator('.scope-dialog button[value="continue"]').click();await page.waitForFunction(()=>state.exceptions.filter(x=>x.occurrence_status==='cancelled').length===2);
 assert.deepEqual(await page.evaluate(()=>state.exceptions.filter(x=>x.occurrence_status==='cancelled').map(x=>x.original_event_date).sort()),['2026-11-16','2026-11-23']);
 assert.equal(await page.evaluate(()=>materializeSeriesOccurrence(state.events[0],'2026-11-30').status),'scheduled');
 // Editing cancellation retains status, and empty notes can clear an inherited note.

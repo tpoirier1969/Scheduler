@@ -272,6 +272,7 @@ async function saveStudentList(){
   const rows=[...document.querySelectorAll('.student-row')].map(row=>({id:row.dataset.studentId||uuid(),name:row.querySelector('.student-name-input').value.trim(),minutes:normalizeLessonMinutes(row.querySelector('.student-minutes-select').value)})).filter(r=>r.name);
   if(new Set(rows.map(r=>r.name.toLowerCase())).size!==rows.length)throw new Error('Student names must be unique.');
   const old=PlannerStore.rows('tod_donna_calendar_active_students');
+  for(const r of rows){if(!old.some(x=>x.id===r.id)){const inactive=old.find(x=>!x.is_active&&x.student_group===group&&x.student_name.toLowerCase()===r.name.toLowerCase());if(inactive)r.id=inactive.id;}}
   const changes=rows.map((r,i)=>PlannerStore.change('tod_donna_calendar_active_students',r.id,{id:r.id,student_group:group,student_name:r.name,standard_lesson_minutes:r.minutes,sort_order:i,is_active:true}));
   for(const r of old.filter(r=>r.is_active&&!rows.some(x=>x.id===r.id)))changes.push(PlannerStore.change('tod_donna_calendar_active_students',r.id,{is_active:false}));
   if(changes.length)await PlannerStore.commit(changes);
@@ -929,7 +930,7 @@ function openDialog(e, editScope=null){
   const occurrenceOnly=state.editScope?.type==='occurrence';
   ['personSelect','presetSelect','allDayCheck','repeatToggle','repeatInterval','repeatUnit','repeatUntil'].forEach(id=>{ const el=$(id); if(el) el.disabled=occurrenceOnly; });
   document.querySelectorAll('.weekday-picker input').forEach(el=>el.disabled=occurrenceOnly);
-  $('deleteEventBtn').classList.toggle('hidden',!e.id || occurrenceOnly || e.recurring_instance); updateEventDateButton(); updateDuplicateWarning(); $('eventDialog').showModal(); setTimeout(()=>$('eventDialog').focus({preventScroll:true}), 0);
+  $('deleteEventBtn').classList.toggle('hidden',!e.id || occurrenceOnly || e.recurring_instance); updateEventDateButton(); updateDuplicateWarning(); $('eventDialog').showModal(); setTimeout(()=>(e.id?$('eventDialog'):$('personSelect')).focus({preventScroll:true}),0);
 }
 async function submitForm(){
   if(!$('eventForm').reportValidity()||!$('eventTitle').value.trim())return;
@@ -938,6 +939,7 @@ async function submitForm(){
   const rec=$('repeatToggle').checked ? { enabled:true, unit:repeatUnit, interval:normalizeRepeatInterval($('repeatInterval').value), frequency:repeatUnit==='day'?'daily':repeatUnit==='week'?'weekly':repeatUnit==='month'?'monthly':'yearly', until:$('repeatUntil').value||null, days:[...document.querySelectorAll('.weekday-picker input:checked')].map(x=>Number(x.value)) } : null;
   const isAllDay=!!$('allDayCheck')?.checked;
   const e={ id:$('eventId').value||uuid(), title:$('eventTitle').value.trim(), person_key:$('personSelect').value, preset_name:$('presetSelect').value, date:$('eventDate').value, start_time:isAllDay?'00:00':$('startTime').value, end_time:isAllDay?'23:59':$('endTime').value, is_all_day:isAllDay, status:$('statusSelect').value, color:state.selectedColor, notes:$('eventNotes').value.trim(), recurrence_rule:rec };
+  if(rec?.until&&rec.until<e.date){alert('Repeat end date must be on or after the event date.');return;}
   if(!e.is_all_day && hmToMin(e.end_time)<=hmToMin(e.start_time)){ alert('End time has to be after start time. Time goblin denied.'); return; }
   const scope=state.editScope;
   state.saving=true;$('saveEventBtn').disabled=true;

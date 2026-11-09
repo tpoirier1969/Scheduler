@@ -107,5 +107,5 @@ function showPlannerHistory(){
  d.showModal();
 }
 document.addEventListener('DOMContentLoaded',()=>{
- const b=document.createElement('button');b.id='plannerHistoryBtn';b.type='button';b.textContent='History';b.onclick=showPlannerHistory;document.querySelector('.header-actions').appendChild(b);
+ const b=document.createElement('button');b.id='plannerHistoryBtn';b.type='button';b.textContent='History';b.onclick=showPlannerHistory;document.getElementById('toolbarMenu').appendChild(b);
 });

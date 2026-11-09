@@ -54,7 +54,7 @@ const PlannerStore = (()=>{
  async function refresh(){await loadEvents();await loadExceptions();await loadStudentList();if(window.PoirierPlannerTasks) await window.PoirierPlannerTasks.refresh();render();}
  function updateUndo(){
   let b=document.getElementById('undoPlannerBtn');
-  if(!b){b=document.createElement('button');b.id='undoPlannerBtn';b.type='button';b.textContent='Undo last change';document.querySelector('.header-actions').appendChild(b);b.onclick=()=>undo().catch(e=>alert(e.message));}
+  if(!b){b=document.createElement('button');b.id='undoPlannerBtn';b.type='button';b.textContent='Undo last change';document.getElementById('toolbarMenu').appendChild(b);b.onclick=()=>undo().catch(e=>alert(e.message));}
   b.hidden=!lastChange;
  }
  function restoreLocal(){try{const saved=JSON.parse(localStorage.getItem('tod_donna_calendar_safe_store_v2')||'null');if(saved) for(const [k,v] of saved)records.set(k,v);return !!saved;}catch{return false;}}

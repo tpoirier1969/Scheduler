@@ -23,14 +23,14 @@ The existing public write policies are retained, not expanded into a new login s
 Before production approval:
 1. Take a fresh database snapshot during a quiet editing window. Preserve the existing backup as well.
 2. Verify the SQL and API against an isolated Supabase project in addition to the completed local PostgreSQL rehearsal. Production RLS/grants were recreated for local checks, but this does not exercise hosted PostgREST/schema-cache behavior.
-3. Review desktop/mobile screenshots and browser test results. No browser/Supabase credentials or real backup data enter CI.
+3. Review desktop/mobile screenshots and browser test results. The full real-browser interaction suite passed in GitHub Actions; the mobile screenshot was inspected. No browser/Supabase credentials or real backup data enter CI.
 4. Agree that Cancel all includes historical scheduled appointments while retaining No-show history (dialog explicitly confirms). Cancelled visibility remains as currently implemented.
 5. Apply additive SQL only after explicit deployment approval, then deploy main assets together. Ask both devices to close and reopen/refresh once: already-open old code cannot discover a newly added update checker.
 6. Verify the exact release hash on both devices before editing. A code-only rollback would not undo data changes and old code ignores new archive/status fields; avoid silently serving old code after use of V2. Database restore is a separately reviewed action.
 
 ## Tests
 
-`npm ci && npm test` runs synthetic PostgreSQL mutation tests, functional DOM tests and content-hash verification. `npm run test:browser` uses Playwright (install Chromium first); `CHROMIUM_PATH` can select an installed browser. CI runs these without deployment.
+`npm ci && npm test` runs synthetic PostgreSQL mutation tests, frontend/RPC integration tests, functional DOM tests and content-hash verification. `npm run test:browser` uses Playwright (install Chromium first); `CHROMIUM_PATH` can select an installed browser. CI runs these without deployment.
 
 `node tests/database.mjs /absolute/path/scheduler-backup-2026-11-09.json` restores the private snapshot into local embedded PostgreSQL only, validates every row by canonical JSON/hash, creates constraints/indexes/policies/triggers/functions, applies additive SQL twice and tests write/rollback/conflict behavior. Do not commit the snapshot. All 676 saved rows across eight tables restored identically in the initial rehearsal. The backup is app-scoped, not Auth/Storage/unrelated projects.
 
