@@ -3,7 +3,7 @@
   "private": true,
   "version": "2.0.0",
   "scripts": {
-    "test": "node tests/database.mjs && TZ=America/New_York node tests/functional.mjs && node scripts/version.mjs --check",
+    "test": "node tests/database.mjs && node tests/integration.mjs && TZ=America/New_York node tests/functional.mjs && node scripts/version.mjs --check",
     "test:browser": "node tests/ui.mjs",
     "version:assets": "node scripts/version.mjs"
   },

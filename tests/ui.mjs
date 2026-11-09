@@ -7,7 +7,7 @@ const root=process.cwd();
 const server=http.createServer((req,res)=>{const f=path.join(root,decodeURIComponent(new URL(req.url,'http://localhost').pathname));if(!f.startsWith(root+'/')){res.writeHead(403).end();return;}fs.readFile(f,(e,data)=>{if(e){res.writeHead(404).end();return;}res.setHeader('Content-Type',f.endsWith('.js')?'text/javascript':f.endsWith('.css')?'text/css':f.endsWith('.json')?'application/json':'text/html');res.end(data);});});
 await new Promise(r=>server.listen(0,'127.0.0.1',r));const url=`http://127.0.0.1:${server.address().port}/index.html`;
 const browser=await chromium.launch({...(process.env.CHROMIUM_PATH?{executablePath:process.env.CHROMIUM_PATH}:{}),headless:true,args:['--no-sandbox']});
-const context=await browser.newContext({timezoneId:'America/New_York'});const page=await context.newPage();let errors=[];page.on('pageerror',e=>errors.push(e.message));
+const context=await browser.newContext({timezoneId:'America/New_York'});const page=await context.newPage();page.setDefaultTimeout(15000);page.setDefaultNavigationTimeout(15000);let errors=[];page.on('pageerror',e=>{errors.push(e.message);console.error('PAGE ERROR:',e.message);});
 await page.route('**/config.js*',r=>r.fulfill({body:'',contentType:'text/javascript'}));
 await page.route('https://**/*',r=>r.abort());
 const ids={event:'00000000-0000-4000-8000-000000000002',student:'00000000-0000-4000-8000-000000000003'};
@@ -17,7 +17,8 @@ await page.addInitScript(({ids})=>{
  if(!localStorage.getItem('ui-seeded')){localStorage.setItem('tod_donna_calendar_safe_store_v2',JSON.stringify([['tod_donna_calendar_events:'+event.id,event],['tod_donna_calendar_active_students:'+student.id,student]]));localStorage.setItem('ui-seeded','yes');}
 },{ids});
 page.on('dialog',d=>d.accept());
-await page.goto(url);await page.waitForFunction(()=>appReady);
+await page.goto(url);await page.waitForFunction(()=>appReady,null,{timeout:15000});
+await page.evaluate(()=>{state.weekStart=new Date('2026-11-09T00:00');render();});
 await page.click('#addEventBtn');assert.equal(await page.inputValue('#personSelect'),'tod');assert.equal(await page.inputValue('#presetSelect'),'Meeting');assert.equal(await page.locator('#studentQuickAddRow').isVisible(),false);
 assert(await page.locator('#personSelect').evaluate(el=>!!(el.compareDocumentPosition(document.getElementById('eventTitle'))&Node.DOCUMENT_POSITION_FOLLOWING)));
 await page.selectOption('#personSelect','donna');assert.equal(await page.inputValue('#presetSelect'),'Lesson');assert(await page.locator('#studentQuickAddRow').isVisible());await page.click('#cancelEventBtn');
@@ -26,7 +27,7 @@ await page.evaluate(()=>openDialog({date:'2026-11-10'}));assert.equal(await page
 await page.evaluate(async()=>{const parent=state.events[0];await saveException({parent_event_id:parent.id,original_event_date:'2026-11-09',exception_status:'modified',new_title:'Edited title',new_notes:'Edited notes'});openDetails(materializeSeriesOccurrence(parent,'2026-11-09'));});
 await page.check('#detailNoShowCheck');await page.waitForFunction(()=>state.exceptions[0].occurrence_status==='no_show');
 assert.equal(await page.evaluate(()=>materializeSeriesOccurrence(state.events[0],'2026-11-09').notes),'Edited notes');assert.equal(await page.evaluate(()=>materializeSeriesOccurrence(state.events[0],'2026-11-16').status),'scheduled');
-assert(await page.locator('.status-badge').getByText('NO-SHOW',{exact:true}).count());
+assert(await page.locator('.status-badge').filter({hasText:'NO-SHOW'}).count());
 // Cancel the next two appointments, exact dates counted from recurrence.
 await page.evaluate(()=>openDetails(materializeSeriesOccurrence(state.events[0],'2026-11-16')));await page.check('#detailCancelCheck');await page.locator('.scope-dialog input[value="number"]').check();await page.locator('.scope-dialog input[name="count"]').fill('2');await page.locator('.scope-dialog button[value="continue"]').click();await page.waitForFunction(()=>state.exceptions.filter(x=>x.occurrence_status==='cancelled').length===2);
 assert.deepEqual(await page.evaluate(()=>state.exceptions.filter(x=>x.occurrence_status==='cancelled').map(x=>x.original_event_date).sort()),['2026-11-16','2026-11-23']);
@@ -41,7 +42,7 @@ await page.click('#undoPlannerBtn');await page.waitForFunction(()=>state.student
 // Archive occurrence retains exception content; undo restores it.
 await page.evaluate(async()=>{const e=materializeSeriesOccurrence(state.events[0],'2026-11-16');window.prompt=()=> '1';await archiveEvent(e);render();});assert.equal(await page.evaluate(()=>materializeSeriesOccurrence(state.events[0],'2026-11-16')),null);await page.click('#undoPlannerBtn');await page.waitForFunction(()=>!!materializeSeriesOccurrence(state.events[0],'2026-11-16'));assert.equal(await page.evaluate(()=>materializeSeriesOccurrence(state.events[0],'2026-11-16').title),'Retained cancellation');
 // Task completion, reopening and archive retain records.
-await page.evaluate(()=>window.PoirierPlannerTasks.open());await page.fill('#taskTitle','Test task');await page.click('#saveTaskBtn');await page.waitForFunction(()=>PlannerStore.rows('tod_donna_calendar_tasks').length===1);await page.locator('.planner-task-toggle').first().click();await page.locator('.planner-task-check input').first().check();await page.waitForFunction(()=>PlannerStore.rows('tod_donna_calendar_tasks')[0].completed);await page.click('#plannerHistoryBtn');await page.locator('.history-item').filter({hasText:'Test task'}).getByRole('button',{name:'Restore'}).click();assert.equal(await page.evaluate(()=>PlannerStore.rows('tod_donna_calendar_tasks')[0].completed),false);await page.locator('.scope-dialog').getByRole('button',{name:'Close',exact:true}).click();
+await page.evaluate(()=>window.PoirierPlannerTasks.open());await page.fill('#taskTitle','Test task');await page.click('#saveTaskBtn');await page.waitForFunction(()=>PlannerStore.rows('tod_donna_calendar_tasks').length===1);await page.locator('.planner-task-toggle').first().click();await page.locator('.planner-task-check input').first().click();await page.waitForFunction(()=>PlannerStore.rows('tod_donna_calendar_tasks')[0].completed);await page.click('#plannerHistoryBtn');await page.locator('.history-item').filter({hasText:'Test task'}).getByRole('button',{name:'Restore'}).click();assert.equal(await page.evaluate(()=>PlannerStore.rows('tod_donna_calendar_tasks')[0].completed),false);await page.locator('.scope-dialog').getByRole('button',{name:'Close',exact:true}).click();
 // Month-end, leap-day, multi-week interval and DST dates.
 const dates=await page.evaluate(()=>{
  const mk=(date,unit,interval=1,days=[])=>({id:'recurrence',date,start_time:'09:00',end_time:'09:30',status:'scheduled',recurrence_rule:{enabled:true,unit,interval,days}});
