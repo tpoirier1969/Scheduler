@@ -41,3 +41,7 @@ Run `npm run version:assets` after asset edits; `npm test` rejects a stale relea
 Open https://raw.githack.com/tpoirier1969/Scheduler/work/planner-preserve-history-2026-11-09/preview.html to test the interface without merging into main. The branch's `preview.html` deliberately removes the hosted Supabase client and `config.js`, injects synthetic appointments and one fictional student into browser-local storage, and displays a visible sample-data warning. Never enter real appointment information on the third-party preview service. The Reset sample data button clears and reinitializes only the preview's sample records.
 
 The preview page is not a hosted database integration test. The `supabase-http` CI job separately tests a disposable local Supabase PostgREST instance and anonymous browser role. Production schema and data are unchanged.
+
+## Device-specific Default Person
+
+In the Planner toolbar menu, select **Default Person (this device)** to choose Tod, Donna, Frank, or Shared. Stored in this browser's `planner_default_person` localStorage key and applied to newly created appointments only. Changing Person while adding or editing a calendar event never changes this setting. Existing saved preferences remain until deliberately changed. The isolated preview uses a separate browser origin and synthetic data; Reset sample data does not reset the default-person preference.

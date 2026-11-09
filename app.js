@@ -370,7 +370,22 @@ function setupControls(){
   $('calendarSelect').onchange=e=>{ state.filter=e.target.value; state.focusDate=null; document.body.classList.remove('focus-day'); closeToolbarMenu(); render(); };
   $('addEventBtn').onclick=()=>openDialog({date: firstVisibleRailDate ? firstVisibleRailDate() : isoDate(new Date()), start_time:'09:00', end_time:'09:30', person_key:defaultPerson()});
   if($('studentsHeaderBtn')) $('studentsHeaderBtn').onclick=openStudentListDialog;
-  $('personSelect').onchange=()=>{fillPresetSelect();$('presetSelect').value=defaultPreset($('personSelect').value);state.selectedColor=PEOPLE[$('personSelect').value].palette[PRESET_DEFAULT[$('presetSelect').value]??0];fillPalette();updateQuickAddVisibility();if(!$('eventId').value)localStorage.setItem('planner_default_person',$('personSelect').value);};
+  const defaultPersonSetting = $('defaultPersonSetting');
+  if(defaultPersonSetting){
+    defaultPersonSetting.value=defaultPerson();
+    defaultPersonSetting.onchange=()=>{
+      const selected=defaultPersonSetting.value;
+      if(!PEOPLE[selected]){ defaultPersonSetting.value=defaultPerson(); return; }
+      try{
+        localStorage.setItem('planner_default_person',selected);
+        setSyncStatus('Default Person on this device: '+PEOPLE[selected].label);
+      }catch(error){
+        defaultPersonSetting.value=defaultPerson();
+        showSyncError('Could not save the Default Person setting on this device.',error);
+      }
+    };
+  }
+  $('personSelect').onchange=()=>{fillPresetSelect();$('presetSelect').value=defaultPreset($('personSelect').value);state.selectedColor=PEOPLE[$('personSelect').value].palette[PRESET_DEFAULT[$('presetSelect').value]??0];fillPalette();updateQuickAddVisibility();};
   $('presetSelect').onchange=()=>{ const p=$('personSelect').value, preset=$('presetSelect').value; const idx=PRESET_DEFAULT[preset] ?? 0; state.selectedColor=PEOPLE[p].palette[idx]; fillPalette(); if(preset==='No-show') $('statusSelect').value='no_show'; updateQuickAddVisibility(); };
   $('repeatToggle').onchange=e=>$('repeatControls').classList.toggle('hidden', !e.target.checked);
   if($('allDayCheck')) $('allDayCheck').onchange=updateAllDayControls;

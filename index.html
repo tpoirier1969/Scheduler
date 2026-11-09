@@ -5,19 +5,19 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
   <meta http-equiv="Cache-Control" content="no-cache" />
   <title>Poirier's Planner</title>
-  <link rel="icon" href="our-scheduler-icon.svg?v=2.0-dd92957ba372" type="image/svg+xml" />
-  <link rel="apple-touch-icon" href="our-scheduler-icon-180.png?v=2.0-dd92957ba372" />
-  <link rel="manifest" href="manifest.webmanifest?v=2.0-dd92957ba372" />
-  <link rel="stylesheet" href="styles.css?v=2.0-dd92957ba372" />
-  <link rel="stylesheet" href="tasks.css?v=2.0-dd92957ba372" />
-  <link rel="stylesheet" href="cancel-fix.css?v=2.0-dd92957ba372" />
+  <link rel="icon" href="our-scheduler-icon.svg?v=2.0-f0cb4424e55d" type="image/svg+xml" />
+  <link rel="apple-touch-icon" href="our-scheduler-icon-180.png?v=2.0-f0cb4424e55d" />
+  <link rel="manifest" href="manifest.webmanifest?v=2.0-f0cb4424e55d" />
+  <link rel="stylesheet" href="styles.css?v=2.0-f0cb4424e55d" />
+  <link rel="stylesheet" href="tasks.css?v=2.0-f0cb4424e55d" />
+  <link rel="stylesheet" href="cancel-fix.css?v=2.0-f0cb4424e55d" />
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="config.js?v=2.0-dd92957ba372"></script>
+  <script src="config.js?v=2.0-f0cb4424e55d"></script>
 </head>
 <body>
   <header class="app-header">
     <div class="brand-lockup">
-      <img src="our-scheduler-icon.svg?v=2.0-dd92957ba372" alt="" class="app-icon" />
+      <img src="our-scheduler-icon.svg?v=2.0-f0cb4424e55d" alt="" class="app-icon" />
       <div>
         <h1>Poirier's Planner</h1>
         <p class="version">V2.0 preview · shared calendar + tasks</p>
@@ -45,6 +45,14 @@
           <option value="all">All</option>
           <option value="donna">Donna</option>
           <option value="tod">Tod</option>
+          <option value="frank">Frank</option>
+          <option value="shared">Shared</option>
+        </select>
+      </label>
+      <label class="calendar-label">Default Person (this device)
+        <select id="defaultPersonSetting" aria-label="Default person for new events on this device">
+          <option value="tod">Tod</option>
+          <option value="donna">Donna</option>
           <option value="frank">Frank</option>
           <option value="shared">Shared</option>
         </select>
@@ -180,13 +188,13 @@
       </menu>
     </form>
   </dialog>
-  <script src="seed-events.js?v=2.0-dd92957ba372"></script>
-  <script>window.PLANNER_BUILD="2.0-dd92957ba372";</script>
-  <script src="cache-update.js?v=2.0-dd92957ba372"></script>
-  <script src="planner-store.js?v=2.0-dd92957ba372"></script>
-  <script src="planner-actions.js?v=2.0-dd92957ba372"></script>
-  <script src="app.js?v=2.0-dd92957ba372"></script>
-  <script src="tasks.js?v=2.0-dd92957ba372"></script>
+  <script src="seed-events.js?v=2.0-f0cb4424e55d"></script>
+  <script>window.PLANNER_BUILD="2.0-f0cb4424e55d";</script>
+  <script src="cache-update.js?v=2.0-f0cb4424e55d"></script>
+  <script src="planner-store.js?v=2.0-f0cb4424e55d"></script>
+  <script src="planner-actions.js?v=2.0-f0cb4424e55d"></script>
+  <script src="app.js?v=2.0-f0cb4424e55d"></script>
+  <script src="tasks.js?v=2.0-f0cb4424e55d"></script>
 
 </body>
 </html>

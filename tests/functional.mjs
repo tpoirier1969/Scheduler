@@ -11,7 +11,16 @@ const run=code=>vm.runInContext(code,dom.getInternalVMContext());const $=id=>w.d
 const table='tod_donna_calendar_events';
 await run(`(async()=>{const e={id:'event',title:'Lesson',person_key:'donna',preset_name:'Lesson',date:'2026-11-09',start_time:'09:00',end_time:'09:30',is_all_day:false,status:'scheduled',color:'#c8dff0',notes:'Original notes',source:'import-test',recurrence_rule:{enabled:true,unit:'week',interval:1,days:[1]}};await saveEvent(e);state.weekStart=new Date('2026-11-09T00:00');render();})()`);
 run("openDialog({date:'2026-11-09'})");assert.equal($('personSelect').value,'tod');assert.equal($('presetSelect').value,'Meeting');assert($('studentQuickAddRow').classList.contains('hidden'));assert($('personSelect').compareDocumentPosition($('eventTitle'))&w.Node.DOCUMENT_POSITION_FOLLOWING);
-$('personSelect').value='donna';$('personSelect').dispatchEvent(new w.Event('change'));assert.equal($('presetSelect').value,'Lesson');assert(!$('studentQuickAddRow').classList.contains('hidden'));$('eventDialog').close();run("openDialog({date:'2026-11-09'})");assert.equal($('personSelect').value,'donna');$('eventDialog').close();
+$('personSelect').value='donna';$('personSelect').dispatchEvent(new w.Event('change'));assert.equal($('presetSelect').value,'Lesson');assert(!$('studentQuickAddRow').classList.contains('hidden'));$('eventDialog').close();
+run("openDialog({date:'2026-11-09'})");assert.equal($('personSelect').value,'tod');$('eventDialog').close();
+assert.equal($('defaultPersonSetting').value,'tod');
+$('defaultPersonSetting').value='donna';$('defaultPersonSetting').dispatchEvent(new w.Event('change'));
+assert.equal(w.localStorage.getItem('planner_default_person'),'donna');
+run("openDialog({date:'2026-11-09'})");assert.equal($('personSelect').value,'donna');assert.equal($('presetSelect').value,'Lesson');
+$('personSelect').value='tod';$('personSelect').dispatchEvent(new w.Event('change'));$('eventDialog').close();
+assert.equal(w.localStorage.getItem('planner_default_person'),'donna');
+run("openDialog({date:'2026-11-09'})");assert.equal($('personSelect').value,'donna');$('eventDialog').close();
+$('defaultPersonSetting').value='tod';$('defaultPersonSetting').dispatchEvent(new w.Event('change'));
 await run("saveException({parent_event_id:'event',original_event_date:'2026-11-09',exception_status:'modified',new_title:'Edited',new_notes:'Edited notes',new_event_date:'2026-11-10'})");
 await run("changeOccurrenceStatus(materializeSeriesOccurrence(state.events[0],'2026-11-09'),'no_show')");
 assert.equal(run("materializeSeriesOccurrence(state.events[0],'2026-11-09').status"),'no_show');assert.equal(run("materializeSeriesOccurrence(state.events[0],'2026-11-09').notes"),'Edited notes');assert.equal(run("materializeSeriesOccurrence(state.events[0],'2026-11-09').date"),'2026-11-10');assert.equal(run("materializeSeriesOccurrence(state.events[0],'2026-11-16').status"),'scheduled');
