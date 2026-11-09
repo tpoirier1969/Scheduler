@@ -3,23 +3,24 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+  <meta http-equiv="Cache-Control" content="no-cache" />
   <title>Poirier's Planner</title>
-  <link rel="icon" href="our-scheduler-icon.svg?v=1.16" type="image/svg+xml" />
-  <link rel="apple-touch-icon" href="our-scheduler-icon-180.png?v=1.16" />
-  <link rel="manifest" href="manifest.webmanifest?v=1.36" />
-  <link rel="stylesheet" href="styles.css?v=1.34" />
-  <link rel="stylesheet" href="tasks.css?v=1.37" />
-  <link rel="stylesheet" href="cancel-fix.css?v=1.35" />
+  <link rel="icon" href="our-scheduler-icon.svg?v=2.0-a0fd82780ef8" type="image/svg+xml" />
+  <link rel="apple-touch-icon" href="our-scheduler-icon-180.png?v=2.0-a0fd82780ef8" />
+  <link rel="manifest" href="manifest.webmanifest?v=2.0-a0fd82780ef8" />
+  <link rel="stylesheet" href="styles.css?v=2.0-a0fd82780ef8" />
+  <link rel="stylesheet" href="tasks.css?v=2.0-a0fd82780ef8" />
+  <link rel="stylesheet" href="cancel-fix.css?v=2.0-a0fd82780ef8" />
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="config.js?v=1.5"></script>
+  <script src="config.js?v=2.0-a0fd82780ef8"></script>
 </head>
 <body>
   <header class="app-header">
     <div class="brand-lockup">
-      <img src="our-scheduler-icon.svg?v=1.16" alt="" class="app-icon" />
+      <img src="our-scheduler-icon.svg?v=2.0-a0fd82780ef8" alt="" class="app-icon" />
       <div>
         <h1>Poirier's Planner</h1>
-        <p class="version">V1.37 · shared calendar + tasks</p>
+        <p class="version">V2.0 preview · shared calendar + tasks</p>
       </div>
     </div>
     <div class="header-actions"><button id="studentsHeaderBtn" class="secondary compact-add" type="button">Students</button><button id="addEventBtn" class="primary compact-add">+ Add</button></div>
@@ -84,6 +85,14 @@
     <form method="dialog" id="eventForm" class="event-form">
       <div class="dialog-title-row"><h2 id="dialogTitle">+ Add</h2><label class="date-inline">Date <input id="eventDate" type="date" required style="position:absolute;opacity:0;width:1px;height:1px;pointer-events:none;" tabindex="-1" aria-hidden="true" /><button id="eventDateButton" type="button" class="secondary compact-add">Pick date</button></label></div>
       <input type="hidden" id="eventId" />
+      <div class="form-row two-col">
+        <label>Person
+          <select id="personSelect"></select>
+        </label>
+        <label>Preset
+          <select id="presetSelect"></select>
+        </label>
+      </div>
       <label>Title <input id="eventTitle" required /></label>
       <div id="duplicateWarning" class="duplicate-warning hidden" role="alert"></div>
       <div id="studentQuickAddRow" class="quick-add-row">
@@ -95,18 +104,10 @@
         <button type="button" id="manageStudentsBtn">Edit Students</button>
       </div>
       <p id="studentQuickAddHint" class="quick-add-hint">Choose an active student to auto-fill Donna + Lesson and the standard lesson time.</p>
-      <div class="form-row two-col">
-        <label>Person
-          <select id="personSelect"></select>
-        </label>
-        <label>Preset
-          <select id="presetSelect"></select>
-        </label>
-      </div>
       <label class="all-day-toggle"><input id="allDayCheck" type="checkbox" /> All-day event</label>
       <div id="timeRow" class="form-row two-col">
-        <label>Start <input id="startTime" type="time" step="1800" required /></label>
-        <label>End <input id="endTime" type="time" step="1800" required /></label>
+        <label>Start <input id="startTime" type="time" step="60" required /></label>
+        <label>End <input id="endTime" type="time" step="60" required /></label>
       </div>
       <label>Color</label>
       <div id="colorPalette" class="color-palette"></div>
@@ -179,9 +180,13 @@
       </menu>
     </form>
   </dialog>
-  <script src="seed-events.js?v=1.5"></script>
-  <script src="app.js?v=1.34"></script>
-  <script src="tasks.js?v=1.36"></script>
-  <script src="cancel-fix.js?v=1.35"></script>
+  <script src="seed-events.js?v=2.0-a0fd82780ef8"></script>
+  <script>window.PLANNER_BUILD="2.0-a0fd82780ef8";</script>
+  <script src="cache-update.js?v=2.0-a0fd82780ef8"></script>
+  <script src="planner-store.js?v=2.0-a0fd82780ef8"></script>
+  <script src="planner-actions.js?v=2.0-a0fd82780ef8"></script>
+  <script src="app.js?v=2.0-a0fd82780ef8"></script>
+  <script src="tasks.js?v=2.0-a0fd82780ef8"></script>
+
 </body>
 </html>

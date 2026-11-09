@@ -107,7 +107,7 @@ function normalizeStudentList(list){
     const key=name.toLowerCase();
     if(seen.has(key)) continue;
     seen.add(key);
-    students.push({ name, standard_lesson_minutes: normalizeLessonMinutes(item?.standard_lesson_minutes ?? item?.lesson_minutes ?? item?.minutes ?? 30) });
+    students.push({ id:item?.id, name, standard_lesson_minutes: normalizeLessonMinutes(item?.standard_lesson_minutes ?? item?.lesson_minutes ?? item?.minutes ?? 30) });
   }
   students.sort((a,b)=>a.name.localeCompare(b.name));
   return { group, students, names: students.map(s=>s.name) };
@@ -132,7 +132,7 @@ async function init(){
   setupNoShowContextClose();
   setupAppResume();
   fillPersonSelect();
-  await loadStudentList();
+  await loadStudentList().catch(err=>showSyncError('Students could not load.',err));
   await loadEvents();
   await loadExceptions();
   focusTodayOnLaunch();
@@ -166,28 +166,16 @@ async function loadEvents(){
       showSyncError('Supabase could not load shared events. Check that the latest SQL has been run and RLS/policies allow access.', error);
       return;
     }
-    if(data?.length){
-      state.events = data.map(fromDb);
-      localStorage.removeItem('tod_donna_calendar_events_v1');
-      return;
-    }
-    const seeded = seedEvents();
-    if(seeded.length){
-      const { error: seedError } = await state.supabase.from('tod_donna_calendar_events').upsert(seeded.map(toDb));
-      if(seedError){
-        state.events = [];
-        setSyncStatus('Supabase seed failed.', 'error');
-        showSyncError('Supabase could not seed shared events. Check the schema/RLS before using the app.', seedError);
-        return;
-      }
-    }
-    state.events = seeded;
-    localStorage.removeItem('tod_donna_calendar_events_v1');
+    PlannerStore.capture('tod_donna_calendar_events', data||[]);
+    state.events=(data||[]).map(fromDb);
     return;
   }
+  if(PlannerStore.restoreLocal()){
+    state.events=PlannerStore.rows('tod_donna_calendar_events').map(fromDb); return;
+  }
   const saved = localStorage.getItem('tod_donna_calendar_events_v1');
-  if(saved){ state.events=JSON.parse(saved); return; }
-  state.events=seedEvents();
+  if(saved){ state.events=JSON.parse(saved); PlannerStore.capture('tod_donna_calendar_events',state.events.map(toDb)); return; }
+  state.events=[];
   await saveAllLocal();
 }
 
@@ -200,11 +188,11 @@ async function loadExceptions(){
       showSyncError('Recurring occurrence changes could not be loaded.', error);
       return;
     }
-    state.exceptions=data||[];
-    localStorage.removeItem('tod_donna_calendar_event_exceptions_v1');
+    state.exceptions=data||[]; PlannerStore.capture('tod_donna_calendar_event_exceptions',state.exceptions);
     return;
   }
-  try{ state.exceptions=JSON.parse(localStorage.getItem('tod_donna_calendar_event_exceptions_v1')||'[]'); }
+  if(PlannerStore.restoreLocal()){state.exceptions=PlannerStore.rows('tod_donna_calendar_event_exceptions');return;}
+  try{ state.exceptions=JSON.parse(localStorage.getItem('tod_donna_calendar_event_exceptions_v1')||'[]'); PlannerStore.capture('tod_donna_calendar_event_exceptions',state.exceptions); }
   catch{ state.exceptions=[]; }
 }
 function exceptionFor(parentId, originalDate){
@@ -216,107 +204,33 @@ function parentEventFor(e){
 }
 function previousDate(dateStr){ return isoDate(addDays(new Date(dateStr+'T00:00'),-1)); }
 async function saveException(ex){
-  const existing=exceptionFor(ex.parent_event_id,ex.original_event_date);
-  const row={
-    id:existing?.id || ex.id || uuid(),
-    parent_event_id:ex.parent_event_id,
-    original_event_date:ex.original_event_date,
-    exception_status:ex.exception_status,
-    new_event_date:ex.new_event_date||null,
-    new_start_time:ex.new_start_time||null,
-    new_end_time:ex.new_end_time||null,
-    new_title:ex.new_title||null,
-    new_notes:ex.new_notes||null
-  };
-  if(state.storageMode==='supabase'){
-    const { error }=await state.supabase.from('tod_donna_calendar_event_exceptions').upsert(row,{onConflict:'parent_event_id,original_event_date'});
-    if(error){ showSyncError('Recurring occurrence change was not saved.',error); throw error; }
-  }
-  const i=state.exceptions.findIndex(x=>x.parent_event_id===row.parent_event_id && x.original_event_date===row.original_event_date);
-  if(i>=0) state.exceptions[i]=row; else state.exceptions.push(row);
-  if(state.storageMode!=='supabase') localStorage.setItem('tod_donna_calendar_event_exceptions_v1',JSON.stringify(state.exceptions));
-}
-async function deleteException(parentId, originalDate){
-  if(state.storageMode==='supabase'){
-    const { error }=await state.supabase.from('tod_donna_calendar_event_exceptions').delete().eq('parent_event_id',parentId).eq('original_event_date',originalDate);
-    if(error){ showSyncError('Recurring occurrence reset failed.',error); throw error; }
-  }
-  state.exceptions=state.exceptions.filter(x=>!(x.parent_event_id===parentId && x.original_event_date===originalDate));
-  if(state.storageMode!=='supabase') localStorage.setItem('tod_donna_calendar_event_exceptions_v1',JSON.stringify(state.exceptions));
-}
-async function deleteExceptionsFrom(parentId, fromDate){
-  if(state.storageMode==='supabase'){
-    const { error }=await state.supabase.from('tod_donna_calendar_event_exceptions').delete().eq('parent_event_id',parentId).gte('original_event_date',fromDate);
-    if(error){ showSyncError('Future recurring exceptions could not be cleared.',error); throw error; }
-  }
-  state.exceptions=state.exceptions.filter(x=>x.parent_event_id!==parentId || x.original_event_date<fromDate);
-  if(state.storageMode!=='supabase') localStorage.setItem('tod_donna_calendar_event_exceptions_v1',JSON.stringify(state.exceptions));
-}
-function chooseSeriesScope(action){
-  const answer=window.prompt(`${action} recurring event:\n1 = This occurrence only\n2 = This and future occurrences\n3 = Entire series\n\nEnter 1, 2, or 3:`,'1');
-  if(answer===null) return null;
-  return ({'1':'occurrence','2':'future','3':'series'})[String(answer).trim()] || null;
+  const old=exceptionFor(ex.parent_event_id,ex.original_event_date);
+  const id=old?.id||ex.id||uuid();
+  const patch={...ex,id};
+  if(!old) Object.assign(patch,{exception_status:ex.exception_status||'modified'});
+  await PlannerStore.commit([PlannerStore.change('tod_donna_calendar_event_exceptions',id,patch)]);
+  state.exceptions=PlannerStore.rows('tod_donna_calendar_event_exceptions');
 }
 function isSeriesOccurrence(e){ return !!(e?.recurring_instance || e?.recurrence_rule?.enabled); }
-async function handleDeleteDetails(){
-  const e=state.detailsEvent;
-  if(!e) return;
-  if(!isSeriesOccurrence(e)){
-    if(!confirm(`Delete “${e.title}”?`)) return;
-    await deleteEvent(e.id);
-    $('eventDetailsDialog').close(); render(); return;
-  }
-  const scope=chooseSeriesScope('Delete');
-  if(!scope) return;
-  const parent=parentEventFor(e);
-  if(!parent){ alert('The recurring series could not be found.'); return; }
-  const original=e.original_event_date || e.date;
-  if(scope==='occurrence'){
-    await saveException({parent_event_id:parent.id,original_event_date:original,exception_status:'cancelled'});
-  }else if(scope==='future'){
-    if(original<=parent.date){
-      await deleteEvent(parent.id);
-    }else{
-      await saveEvent({...parent,recurrence_rule:{...parent.recurrence_rule,until:previousDate(original)}});
-      await deleteExceptionsFrom(parent.id,original);
-    }
-  }else{
-    await deleteEvent(parent.id);
-  }
-  $('eventDetailsDialog').close(); render();
-}
 function handleEditDetails(){
-  const e=state.detailsEvent;
-  if(!e) return;
-  if(!isSeriesOccurrence(e)){
-    $('eventDetailsDialog').close(); openDialog(e); return;
-  }
-  const scope=chooseSeriesScope('Edit');
-  if(!scope) return;
-  const parent=parentEventFor(e);
-  if(!parent){ alert('The recurring series could not be found.'); return; }
-  const original=e.original_event_date || e.date;
+  const e=state.detailsEvent;if(!e)return;
   $('eventDetailsDialog').close();
-  if(scope==='occurrence'){
-    openDialog(e,{type:'occurrence',parentId:parent.id,originalDate:original});
-  }else if(scope==='future'){
-    if(original<=parent.date) openDialog(parent,{type:'series'});
-    else openDialog({...e,id:parent.id,recurrence_rule:parent.recurrence_rule},{type:'future',parentId:parent.id,originalDate:original});
-  }else{
-    openDialog(parent,{type:'series'});
-  }
+  if(isSeriesOccurrence(e)){
+    const parent=parentEventFor(e);
+    if(!parent){alert('Series could not be found.');return;}
+    openDialog(e,{type:'occurrence',parentId:parent.id,originalDate:e.original_event_date||e.date});
+  }else openDialog(e);
 }
-
-
 
 async function loadStudentList(){
+  state.studentsLoaded=false;
   const fallback = () => {
     const saved = localStorage.getItem('tod_donna_calendar_active_students_v1') || localStorage.getItem('tod_donna_calendar_student_list_v1');
     if(saved){
       try { state.studentList = normalizeStudentList(JSON.parse(saved)); }
       catch { state.studentList = normalizeStudentList({ group: defaultStudentGroupName(), students: [] }); }
     } else {
-      state.studentList = normalizeStudentList(buildStudentListFromEvents(seedEvents()));
+      state.studentList = normalizeStudentList({group:defaultStudentGroupName(),students:[]});
       saveStudentListLocal();
     }
     fillStudentQuickAddSelect();
@@ -325,20 +239,22 @@ async function loadStudentList(){
     const { data, error } = await state.supabase
       .from('tod_donna_calendar_active_students')
       .select('*')
-      .eq('is_active', true)
       .order('sort_order');
-    if(!error && data?.length){
+    if(!error){
+      PlannerStore.capture('tod_donna_calendar_active_students',data||[]);
       state.studentList = normalizeStudentList({
-        group: data[0].student_group || defaultStudentGroupName(),
-        students: data.map(r => ({ name:r.student_name, standard_lesson_minutes:r.standard_lesson_minutes }))
+        group: data.find(r=>r.is_active)?.student_group || defaultStudentGroupName(),
+        students: data.filter(r=>r.is_active).map(r => ({ id:r.id,name:r.student_name, standard_lesson_minutes:r.standard_lesson_minutes }))
       });
       saveStudentListLocal();
-      fillStudentQuickAddSelect();
+      fillStudentQuickAddSelect();state.studentsLoaded=true;
       return;
     }
-    if(error) console.warn('Active students table unavailable; using local list.', error.message || error);
+    if(error){state.studentList=normalizeStudentList({students:[]});fillStudentQuickAddSelect();throw new Error('Student list could not load. '+error.message);}
   }
-  fallback();
+  if(PlannerStore.restoreLocal()){const rows=PlannerStore.rows('tod_donna_calendar_active_students').filter(r=>r.is_active);state.studentList=normalizeStudentList({group:rows[0]?.student_group,students:rows.map(r=>({id:r.id,name:r.student_name,standard_lesson_minutes:r.standard_lesson_minutes}))});fillStudentQuickAddSelect();state.studentsLoaded=true;return;}
+  fallback();state.studentsLoaded=true;
+  PlannerStore.capture('tod_donna_calendar_active_students',state.studentList.students.map((r,i)=>({id:r.id||uuid(),student_group:state.studentList.group,student_name:r.name,standard_lesson_minutes:r.standard_lesson_minutes,sort_order:i,is_active:true})));
 }
 function buildStudentListFromEvents(events){
   const excluded = new Set(['tod','dad','frank','showcase','opening night','9 to 5','schedule theory','vocal ensemble']);
@@ -349,36 +265,23 @@ function buildStudentListFromEvents(events){
     .sort((a,b)=>a.localeCompare(b));
   return { group: defaultStudentGroupName(), students: names.map(name=>({ name, standard_lesson_minutes:30 })), names };
 }
-function saveStudentListLocal(){ state.studentList=normalizeStudentList(state.studentList); localStorage.setItem('tod_donna_calendar_active_students_v1', JSON.stringify(state.studentList)); }
+function saveStudentListLocal(){state.studentList=normalizeStudentList(state.studentList);localStorage.setItem(state.storageMode==='supabase'?'tod_donna_calendar_shared_students_cache_v2':'tod_donna_calendar_active_students_v1',JSON.stringify(state.studentList));}
 async function saveStudentList(){
-  const group = ($('semesterNameInput')?.value || defaultStudentGroupName()).trim() || defaultStudentGroupName();
-  const rows = [...document.querySelectorAll('.student-row')].map(row=>({
-    name: row.querySelector('.student-name-input')?.value.trim() || '',
-    standard_lesson_minutes: normalizeLessonMinutes(row.querySelector('.student-minutes-select')?.value || 30)
-  })).filter(s=>s.name);
-  const seen = new Set();
-  const students = rows
-    .filter(s=>{ const k=s.name.toLowerCase(); if(seen.has(k)) return false; seen.add(k); return true; })
-    .sort((a,b)=>a.name.localeCompare(b.name));
-  state.studentList = normalizeStudentList({ group, students });
-  saveStudentListLocal();
-  if(state.storageMode==='supabase'){
-    await state.supabase.from('tod_donna_calendar_active_students').update({ is_active:false }).eq('is_active', true);
-    await state.supabase.from('tod_donna_calendar_active_students').delete().eq('student_group', group);
-    if(state.studentList.students.length){
-      const dbRows = state.studentList.students.map((student,idx)=>({
-        id: uuid(), student_group: group, student_name: student.name, standard_lesson_minutes: normalizeLessonMinutes(student.standard_lesson_minutes), sort_order: idx, is_active: true
-      }));
-      await state.supabase.from('tod_donna_calendar_active_students').upsert(dbRows);
-    }
-  }
-  fillStudentQuickAddSelect();
+  if(!state.studentsLoaded)throw new Error('Student list did not load. Refresh before editing it.');
+  const group=($('semesterNameInput').value||defaultStudentGroupName()).trim();
+  const rows=[...document.querySelectorAll('.student-row')].map(row=>({id:row.dataset.studentId||uuid(),name:row.querySelector('.student-name-input').value.trim(),minutes:normalizeLessonMinutes(row.querySelector('.student-minutes-select').value)})).filter(r=>r.name);
+  if(new Set(rows.map(r=>r.name.toLowerCase())).size!==rows.length)throw new Error('Student names must be unique.');
+  const old=PlannerStore.rows('tod_donna_calendar_active_students');
+  const changes=rows.map((r,i)=>PlannerStore.change('tod_donna_calendar_active_students',r.id,{id:r.id,student_group:group,student_name:r.name,standard_lesson_minutes:r.minutes,sort_order:i,is_active:true}));
+  for(const r of old.filter(r=>r.is_active&&!rows.some(x=>x.id===r.id)))changes.push(PlannerStore.change('tod_donna_calendar_active_students',r.id,{is_active:false}));
+  if(changes.length)await PlannerStore.commit(changes);
+  await loadStudentList();
 }
 function addStudentEditorRow(student={name:'', standard_lesson_minutes:30}){
   const wrap=$('studentRows');
   if(!wrap) return;
   const row=document.createElement('div');
-  row.className='student-row';
+  row.className='student-row';row.dataset.studentId=student.id||uuid();
   row.innerHTML=`<input class="student-name-input" placeholder="Student name" value="${escapeHtml(student.name||'')}" />
     <select class="student-minutes-select" aria-label="Standard lesson time">
       <option value="30" ${normalizeLessonMinutes(student.standard_lesson_minutes)===30?'selected':''}>30 min</option>
@@ -404,48 +307,19 @@ function fillStudentQuickAddSelect(){
 }
 
 function fromDb(r){
-  return { id:r.id, title:r.title, person_key:r.person_key, preset_name:r.preset_name, status:r.status, date:r.event_date, start_time:(r.start_time||'00:00').slice(0,5), end_time:(r.end_time||'23:59').slice(0,5), is_all_day:!!r.is_all_day, notes:r.notes||'', color:r.color_hex, recurrence_rule:r.recurrence_rule, imported:r.imported_source?true:false };
+  return {...r,date:r.event_date,start_time:(r.start_time||'00:00').slice(0,5),end_time:(r.end_time||'23:59').slice(0,5),is_all_day:!!r.is_all_day,notes:r.notes??'',color:r.color_hex,source:r.imported_source,imported:!!r.imported_source};
 }
 function toDb(e){
   return { id:e.id, title:e.title, person_key:e.person_key, preset_name:e.preset_name, status:e.status, event_date:e.date, start_time:e.is_all_day ? '00:00' : e.start_time, end_time:e.is_all_day ? '23:59' : e.end_time, is_all_day:!!e.is_all_day, notes:e.notes, color_hex:e.color, recurrence_rule:e.recurrence_rule, imported_source:e.source||null };
 }
 async function saveEvent(e){
-  if(state.storageMode==='supabase'){
-    const { error } = await state.supabase.from('tod_donna_calendar_events').upsert(toDb(e));
-    if(error){
-      setSyncStatus('Event was NOT saved to shared calendar.', 'error');
-      showSyncError("Event was not saved. It will not appear on Donna's phone or other browsers until this is fixed.", error);
-      throw error;
-    }
-    const i=state.events.findIndex(x=>x.id===e.id);
-    if(i>=0) state.events[i]=e; else state.events.push(e);
-    localStorage.removeItem('tod_donna_calendar_events_v1');
-    setSyncStatus('Saved to shared calendar');
-    return;
-  }
-  const i=state.events.findIndex(x=>x.id===e.id);
-  if(i>=0) state.events[i]=e; else state.events.push(e);
-  await saveAllLocal();
-  setSyncStatus('Saved on this device only', 'warn');
-}
-async function deleteEvent(id){
-  if(state.storageMode==='supabase'){
-    const { error } = await state.supabase.from('tod_donna_calendar_events').delete().eq('id',id);
-    if(error){
-      setSyncStatus('Delete failed on shared calendar.', 'error');
-      showSyncError('Delete failed. The shared calendar was not changed.', error);
-      throw error;
-    }
-    state.events=state.events.filter(e=>e.id!==id);
-    state.exceptions=state.exceptions.filter(x=>x.parent_event_id!==id);
-    localStorage.removeItem('tod_donna_calendar_events_v1');
-    setSyncStatus('Deleted from shared calendar');
-    return;
-  }
-  state.events=state.events.filter(e=>e.id!==id);
-  state.exceptions=state.exceptions.filter(x=>x.parent_event_id!==id);
-  await saveAllLocal();
-  localStorage.setItem('tod_donna_calendar_event_exceptions_v1',JSON.stringify(state.exceptions));
+  const patch={...toDb(e)};
+  if(e.archived_from!==undefined)patch.archived_from=e.archived_from;
+  if(e.cancellation_from!==undefined)patch.cancellation_from=e.cancellation_from;
+  await PlannerStore.commit([PlannerStore.change('tod_donna_calendar_events',e.id,patch)]);
+  state.events=PlannerStore.rows('tod_donna_calendar_events').map(fromDb);
+  if(state.storageMode!=='supabase') await saveAllLocal();
+  setSyncStatus(state.storageMode==='supabase'?'Saved to shared calendar':'Saved on this device only');
 }
 async function saveAllLocal(){ localStorage.setItem('tod_donna_calendar_events_v1', JSON.stringify(state.events)); }
 function showSyncError(message, error){
@@ -493,15 +367,16 @@ function setupControls(){
   if($('eventDate')) $('eventDate').addEventListener('change', updateEventDateButton);
   $('zoomSelect').onchange=e=>{ document.body.classList.remove('zoom-compact','zoom-detailed'); document.body.classList.add('zoom-'+e.target.value); };
   $('calendarSelect').onchange=e=>{ state.filter=e.target.value; state.focusDate=null; document.body.classList.remove('focus-day'); closeToolbarMenu(); render(); };
-  $('addEventBtn').onclick=()=>openDialog({date: firstVisibleRailDate ? firstVisibleRailDate() : isoDate(new Date()), start_time:'09:00', end_time:'09:30', person_key:'donna'});
+  $('addEventBtn').onclick=()=>openDialog({date: firstVisibleRailDate ? firstVisibleRailDate() : isoDate(new Date()), start_time:'09:00', end_time:'09:30', person_key:defaultPerson()});
   if($('studentsHeaderBtn')) $('studentsHeaderBtn').onclick=openStudentListDialog;
-  $('personSelect').onchange=()=>{ fillPresetSelect(); fillPalette(); updateQuickAddVisibility(); };
+  $('personSelect').onchange=()=>{fillPresetSelect();$('presetSelect').value=defaultPreset($('personSelect').value);state.selectedColor=PEOPLE[$('personSelect').value].palette[PRESET_DEFAULT[$('presetSelect').value]??0];fillPalette();updateQuickAddVisibility();if(!$('eventId').value)localStorage.setItem('planner_default_person',$('personSelect').value);};
   $('presetSelect').onchange=()=>{ const p=$('personSelect').value, preset=$('presetSelect').value; const idx=PRESET_DEFAULT[preset] ?? 0; state.selectedColor=PEOPLE[p].palette[idx]; fillPalette(); if(preset==='No-show') $('statusSelect').value='no_show'; updateQuickAddVisibility(); };
   $('repeatToggle').onchange=e=>$('repeatControls').classList.toggle('hidden', !e.target.checked);
   if($('allDayCheck')) $('allDayCheck').onchange=updateAllDayControls;
   ['eventTitle','eventDate','startTime','endTime','personSelect','allDayCheck'].forEach(id=>{ const el=$(id); if(el) el.addEventListener('input', updateDuplicateWarning); if(el) el.addEventListener('change', updateDuplicateWarning); });
-  $('saveEventBtn').onclick=async ev=>{ ev.preventDefault(); await submitForm(); };
-  $('deleteEventBtn').onclick=async()=>{ const id=$('eventId').value; if(id){ await deleteEvent(id); $('eventDialog').close(); render(); } };
+  $('eventForm').onsubmit=async ev=>{ev.preventDefault();await submitForm();};
+  $('saveEventBtn').onclick=async ev=>{ev.preventDefault();await submitForm();};
+  $('deleteEventBtn').onclick=()=>handleDeleteEditor().catch(err=>alert(err.message));
   $('cancelEventBtn').onclick=()=>{$('eventDialog').close();};
   $('studentQuickAddSelect').onchange=e=>applyStudentQuickAdd(e.target.value);
   $('manageStudentsBtn').onclick=openStudentListDialog;
@@ -509,10 +384,10 @@ function setupControls(){
   $('closeStudentsBtn').onclick=()=>$('studentListDialog').close();
   $('cancelStudentsBtn').onclick=()=>$('studentListDialog').close();
   $('addStudentRowBtn').onclick=()=>addStudentEditorRow({name:'', standard_lesson_minutes:30});
-  $('saveStudentsBtn').onclick=async()=>{ await saveStudentList(); $('studentListDialog').close(); };
+  $('saveStudentsBtn').onclick=async()=>{const b=$('saveStudentsBtn');b.disabled=true;try{await saveStudentList();$('studentListDialog').close();}catch(err){alert(err.message);}finally{b.disabled=false;}};
   $('closeDetailsBtn').onclick=()=>$('eventDetailsDialog').close();
   $('editDetailsBtn').onclick=()=>handleEditDetails();
-  $('deleteDetailsBtn').onclick=async()=>handleDeleteDetails();
+  $('deleteDetailsBtn').onclick=()=>handleDeleteDetails().catch(err=>alert(err.message));
   document.addEventListener('click', ev=>{ if(!ev.target.closest('.toolbar')) closeToolbarMenu(); });
 }
 function toggleToolbarMenu(){ const tb=document.querySelector('.toolbar'); const open=!tb.classList.contains('menu-open'); tb.classList.toggle('menu-open', open); $('navMenuBtn').setAttribute('aria-expanded', String(open)); }
@@ -654,7 +529,7 @@ function openAddFromTimeline(ev, dateStr, timeline){
   ev.stopPropagation();
   const start = slotTimeFromPointer(ev, timeline);
   const end = minToHm(Math.min(END_HOUR * 60, hmToMin(start) + 30));
-  openDialog({date:dateStr,start_time:start,end_time:end,person_key:'donna'});
+  openDialog({date:dateStr,start_time:start,end_time:end,person_key:defaultPerson()});
 }
 function firstVisibleRailDate(){
   const grid=$('calendarGrid');
@@ -700,15 +575,8 @@ function closeNoShowContext(){
 }
 function canToggleNoShow(e){ return !!e; }
 async function toggleNoShowForEvent(e){
-  if(!e) return;
-  if(e.recurring_instance){
-    alert('For a recurring occurrence, open Event Details and use Edit. Per-occurrence no-show status is not stored by the current exception schema.');
-    return;
-  }
-  const updated={...e, status:e.status==='no_show'?'scheduled':'no_show'};
-  await saveEvent(updated);
-  closeNoShowContext();
-  render();
+  await changeOccurrenceStatus(e,e.status==='no_show'?'scheduled':'no_show');
+  closeNoShowContext();render();
 }
 function showNoShowContext(e, x, y){
   closeNoShowContext();
@@ -718,7 +586,7 @@ function showNoShowContext(e, x, y){
   const isNoShow=e.status==='no_show';
   const allowed=canToggleNoShow(e);
   menu.innerHTML=`<button type="button" ${allowed?'':'disabled'}>${isNoShow?'Remove no-show slash':'Mark no-show'}</button><small>${allowed?'Mark this event as missed/no-show':'No-show unavailable'}</small>`;
-  menu.querySelector('button').onclick=async ev=>{ ev.stopPropagation(); await toggleNoShowForEvent(e); };
+  menu.querySelector('button').onclick=async ev=>{ev.stopPropagation();try{await toggleNoShowForEvent(e);}catch(err){alert(err.message);}};
   document.body.appendChild(menu);
   const rect=menu.getBoundingClientRect();
   menu.style.left=Math.min(x, window.innerWidth-rect.width-8)+'px';
@@ -797,35 +665,22 @@ function fillPersonSelect(){ $('personSelect').innerHTML=Object.entries(PEOPLE).
 function fillPresetSelect(){ const p=$('personSelect').value||'donna'; $('presetSelect').innerHTML=PEOPLE[p].presets.map(x=>{ const c=PEOPLE[p].palette[PRESET_DEFAULT[x] ?? 0]; return `<option style="background:${c}">${x}</option>`; }).join(''); }
 function updateQuickAddVisibility(){ const row=$('studentQuickAddRow'); const hint=$('studentQuickAddHint'); if(!row) return; const show=$('personSelect').value==='donna'; row.classList.toggle('hidden', !show); if(hint) hint.classList.toggle('hidden', !show); }
 function applyStudentQuickAdd(name){ if(!name) return; const student=getStudentByName(name); $('eventTitle').value=name; $('personSelect').value='donna'; fillPresetSelect(); $('presetSelect').value='Lesson'; $('statusSelect').value='scheduled'; if(student){ const start=hmToMin($('startTime').value || '09:00'); $('endTime').value=minToHm(start + normalizeLessonMinutes(student.standard_lesson_minutes)); } state.selectedColor=PEOPLE.donna.palette[PRESET_DEFAULT.Lesson]; fillPalette(); updateQuickAddVisibility(); updateDuplicateWarning(); }
-function openStudentListDialog(){ state.studentList=normalizeStudentList(state.studentList); $('semesterNameInput').value=state.studentList.group || defaultStudentGroupName(); renderStudentEditorRows(); $('studentListDialog').showModal(); }
+function openStudentListDialog(){ if(!state.studentsLoaded){alert('Student list did not load. Refresh before editing it.');return;} state.studentList=normalizeStudentList(state.studentList); $('semesterNameInput').value=state.studentList.group || defaultStudentGroupName(); renderStudentEditorRows(); $('studentListDialog').showModal(); }
 function fillPalette(){ const p=$('personSelect').value||'donna'; $('colorPalette').innerHTML=''; PEOPLE[p].palette.forEach(c=>{ const b=document.createElement('button'); b.type='button'; b.disabled=state.editScope?.type==='occurrence'; b.className='color-swatch'+(c===state.selectedColor?' selected':''); b.style.background=c; b.title=c; b.onclick=()=>{ state.selectedColor=c; fillPalette(); }; $('colorPalette').appendChild(b); }); }
 
-function materializeSeriesOccurrence(parent, originalDate){
+function materializeSeriesOccurrence(parent,originalDate){
   const ex=exceptionFor(parent.id,originalDate);
-  if(ex?.exception_status==='cancelled') return null;
-  return {
-    ...parent,
-    id:parent.id+'__'+originalDate,
-    parent_event_id:parent.id,
-    original_event_date:originalDate,
-    recurring_instance:true,
-    recurrence_exception_id:ex?.id||null,
-    date:ex?.new_event_date||originalDate,
-    start_time:(ex?.new_start_time||parent.start_time||'00:00').slice(0,5),
-    end_time:(ex?.new_end_time||parent.end_time||'23:59').slice(0,5),
-    title:ex?.new_title ?? parent.title,
-    notes:ex?.new_notes ?? parent.notes,
-    // A cancellation/no-show belongs to the historical source occurrence, not every future repeat.
-    // Recurring exceptions handle later occurrence cancellations individually.
-    status: originalDate===parent.date ? parent.status : 'scheduled'
-  };
+  if((parent.archived_from && originalDate>=parent.archived_from)||ex?.hidden||ex?.new_notes===DELETED_OCCURRENCE_SENTINEL)return null;
+  const legacy=ex?.exception_status==='cancelled'?'cancelled':(originalDate===parent.date?parent.status:'scheduled');
+  const status=ex?.occurrence_status ?? ((parent.cancellation_from && originalDate>=parent.cancellation_from && legacy!=='no_show')?'cancelled':legacy);
+  return {...parent,id:parent.id+'__'+originalDate,parent_event_id:parent.id,original_event_date:originalDate,recurring_instance:true,recurrence_exception_id:ex?.id||null,date:ex?.new_event_date||originalDate,start_time:(ex?.new_start_time||parent.start_time).slice(0,5),end_time:(ex?.new_end_time||parent.end_time).slice(0,5),title:ex?.new_title??parent.title,notes:ex?.new_notes??parent.notes,status};
 }
 function expandEventsForRange(rangeStart, rangeDays){
   const start=isoDate(rangeStart), end=isoDate(addDays(rangeStart,rangeDays));
   let out=[];
   for(const e of state.events){
     if(!e.recurrence_rule?.enabled){
-      if(e.date>=start && e.date<end) out.push(e);
+      if(!e.archived_from && e.date>=start && e.date<end) out.push(e);
       continue;
     }
     for(let i=0;i<rangeDays;i++){
@@ -929,7 +784,7 @@ function renderGrid(events){
     if(state.focusDate===ds) col.classList.add('focused');
     col.innerHTML=`<div class="day-header" title="Double-click to zoom this day"><div><strong>${fmtDay(d)}</strong><small>${fmtDate(d)}</small></div><button class="add-day" aria-label="Add event">+</button></div><div class="all-day-row" aria-label="All-day events"></div><div class="day-timeline"><div class="half-lines"></div></div>`;
     col.querySelector('.day-header').ondblclick=(ev)=>{ if(ev.target.closest('button')) return; state.focusDate = state.focusDate===ds ? null : ds; document.body.classList.toggle('focus-day', !!state.focusDate); render(); };
-    col.querySelector('.add-day').onclick=()=>openDialog({date:ds,start_time:'09:00',end_time:'09:30',person_key:'donna'});
+    col.querySelector('.add-day').onclick=()=>openDialog({date:ds,start_time:'09:00',end_time:'09:30',person_key:defaultPerson()});
     const tl=col.querySelector('.day-timeline');
     tl.addEventListener('click', ev=>openAddFromTimeline(ev, ds, tl));
     for(let h=START_HOUR; h<=END_HOUR; h++){ const lab=document.createElement('div'); lab.className='time-label'; lab.style.top = `calc(var(--time-label-gutter) + ${h-START_HOUR} * var(--hour-height))`; lab.textContent=fmtTime(String(h).padStart(2,'0')+':00'); tl.appendChild(lab); }
@@ -989,7 +844,7 @@ function allDayEventEl(e){
   const div=document.createElement('article');
   div.className='all-day-event '+(e.status==='no_show'?'no-show ':'')+(e.status==='cancelled'?'cancelled ':'');
   div.style.background=e.color||'#ddd';
-  div.innerHTML=`<span class="event-title">${escapeHtml(e.title)}</span>`;
+  div.innerHTML=`<span class="event-title">${escapeHtml(e.title)}</span>${statusBadge(e)}`;
   attachNoShowGestures(div,e);
   div.addEventListener('pointerdown', ev=>ev.stopPropagation());
   div.onclick=(ev)=>{ ev.stopPropagation(); ev.preventDefault(); openDetails(e); };
@@ -1008,7 +863,7 @@ function eventEl(e){
   if(e.overlapStack){ div.style.transform = `translateY(calc(${e.stackIndex || 0} * .42rem))`; div.style.zIndex = String(10 + (e.stackIndex || 0)); }
   div.style.background=e.color||'#ddd';
   const meta = e.notes ? e.notes : `${PEOPLE[e.person_key]?.label||e.person_key} · ${e.preset_name}`;
-  div.innerHTML=`<div><div class="event-title">${escapeHtml(e.title)}</div><div class="event-meta">${escapeHtml(meta)}</div></div>`;
+  div.innerHTML=`<div><div class="event-title">${escapeHtml(e.title)}</div>${statusBadge(e)}<div class="event-meta">${escapeHtml(meta)}</div></div>`;
   attachNoShowGestures(div,e);
   div.addEventListener('pointerdown', ev=>ev.stopPropagation()); div.addEventListener('dblclick', ev=>ev.stopPropagation()); div.onclick=(ev)=>{ ev.stopPropagation(); ev.preventDefault(); openDetails(e); };
   return div;
@@ -1026,33 +881,19 @@ function renderPrint(events, startArg=null, daysArg=null){
     const dayEvents=events.filter(e=>e.date===ds).sort((a,b)=>(a.is_all_day?0:1)-(b.is_all_day?0:1) || hmToMin(a.start_time||'00:00')-hmToMin(b.start_time||'00:00'));
     const wrap=document.createElement('div');
     wrap.className='print-day'+(ds<isoDate(new Date())?' past-print':'');
-    wrap.innerHTML=`<h3>${fmtDay(d)} ${fmtDate(d)}</h3>` + (dayEvents.length?`<ul>${dayEvents.map(e=>`<li>${e.is_all_day ? 'All day' : fmtTime(e.start_time)+'–'+fmtTime(e.end_time)} · ${escapeHtml(e.title)} · ${PEOPLE[e.person_key]?.label} · ${e.preset_name}${e.status==='no_show'?' · NO-SHOW':''}</li>`).join('')}</ul>`:'<p>No blocks.</p>');
+    wrap.innerHTML=`<h3>${fmtDay(d)} ${fmtDate(d)}</h3>` + (dayEvents.length?`<ul>${dayEvents.map(e=>`<li>${e.is_all_day ? 'All day' : fmtTime(e.start_time)+'–'+fmtTime(e.end_time)} · ${escapeHtml(e.title)} · ${PEOPLE[e.person_key]?.label} · ${e.preset_name}${e.status==='no_show'?' · NO-SHOW':e.status==='cancelled'?' · CANCELLED':''}</li>`).join('')}</ul>`:'<p>No blocks.</p>');
     box.appendChild(wrap);
   }
 }
 
 
-async function setDetailsStatusFlag(flag, checked){
-  const e=state.detailsEvent;
-  if(!e) return;
-  if(e.recurring_instance){
-    const parent=parentEventFor(e);
-    const original=e.original_event_date||e.date;
-    if(flag==='cancelled'){
-      if(checked) await saveException({parent_event_id:parent.id,original_event_date:original,exception_status:'cancelled'});
-      else await deleteException(parent.id,original);
-      $('eventDetailsDialog').close(); render(); return;
-    }
-    alert('Per-occurrence no-show status needs a schema extension; use Edit for title/date/time/notes or Cancelled to remove this occurrence.');
-    render(); return;
-  }
-  const updated={...e};
-  if(flag==='no_show') updated.status = checked ? 'no_show' : 'scheduled';
-  if(flag==='cancelled') updated.status = checked ? 'cancelled' : 'scheduled';
-  await saveEvent(updated);
-  state.detailsEvent=updated;
-  render();
-  openDetails(updated);
+async function setDetailsStatusFlag(flag,checked){
+  const e=state.detailsEvent;if(!e)return;
+  try{
+    if(flag==='cancelled'&&checked&&isSeriesOccurrence(e)) await cancelRecurring(e);
+    else await changeOccurrenceStatus(e,checked?flag:'scheduled');
+    $('eventDetailsDialog').close();render();
+  }catch(err){alert(err.message);openDetails(e);}
 }
 
 function openDetails(e){
@@ -1074,36 +915,40 @@ function openDetails(e){
     <div class="detail-row"><span class="detail-label">Status</span><span>${escapeHtml(status)}</span></div>
     <div class="detail-row"><span class="detail-label">Repeat</span><span>${escapeHtml(recurrence)}</span></div>
     <div class="detail-row"><span class="detail-label">Notes</span><span>${escapeHtml(e.notes||'')}</span></div>`;
-  $('eventDetailsDialog').showModal();
+  if(!$('eventDetailsDialog').open)$('eventDetailsDialog').showModal();
   const ns=$('detailNoShowCheck');
   const cc=$('detailCancelCheck');
   if(ns) ns.onchange=ev=>setDetailsStatusFlag('no_show', ev.target.checked);
   if(cc) cc.onchange=ev=>setDetailsStatusFlag('cancelled', ev.target.checked);
 }
 function openDialog(e, editScope=null){
-  state.editScope=editScope;
-  $('dialogTitle').textContent=e.id?'Edit':'+ Add'; $('eventId').value=e.id||''; $('eventTitle').value=e.title||''; $('personSelect').value=e.person_key||'donna'; fillPresetSelect(); $('presetSelect').value=e.preset_name||PEOPLE[$('personSelect').value].presets[0];
+  state.editScope=editScope; state.editOriginal={...e};
+  $('dialogTitle').textContent=e.id?'Edit':'+ Add'; $('eventId').value=e.id||''; $('eventTitle').value=e.title||''; $('personSelect').value=e.person_key||defaultPerson(); fillPresetSelect(); $('presetSelect').value=e.preset_name||defaultPreset($('personSelect').value);
   $('eventDate').value=e.date||isoDate(state.weekStart); $('startTime').value=e.start_time||'09:00'; $('endTime').value=e.end_time||'09:30'; if($('allDayCheck')) $('allDayCheck').checked=!!e.is_all_day; updateAllDayControls(); $('statusSelect').value=e.status||'scheduled'; $('eventNotes').value=e.notes||''; state.selectedColor=e.color||PEOPLE[$('personSelect').value].palette[0]; fillPalette(); fillStudentQuickAddSelect(); if($('studentQuickAddSelect')) $('studentQuickAddSelect').value=''; updateQuickAddVisibility();
   $('repeatToggle').checked=!!e.recurrence_rule?.enabled; $('repeatControls').classList.toggle('hidden',!$('repeatToggle').checked); const repeatParts=getRepeatParts(e.recurrence_rule||{frequency:'weekly'}); $('repeatInterval').value=repeatParts.interval; $('repeatUnit').value=repeatParts.unit; $('repeatUntil').value=e.recurrence_rule?.until||''; document.querySelectorAll('.weekday-picker input').forEach(ch=>ch.checked=e.recurrence_rule?.days?.map(String).includes(ch.value)||false);
   const occurrenceOnly=state.editScope?.type==='occurrence';
-  ['personSelect','presetSelect','allDayCheck','statusSelect','repeatToggle','repeatInterval','repeatUnit','repeatUntil'].forEach(id=>{ const el=$(id); if(el) el.disabled=occurrenceOnly; });
+  ['personSelect','presetSelect','allDayCheck','repeatToggle','repeatInterval','repeatUnit','repeatUntil'].forEach(id=>{ const el=$(id); if(el) el.disabled=occurrenceOnly; });
   document.querySelectorAll('.weekday-picker input').forEach(el=>el.disabled=occurrenceOnly);
   $('deleteEventBtn').classList.toggle('hidden',!e.id || occurrenceOnly || e.recurring_instance); updateEventDateButton(); updateDuplicateWarning(); $('eventDialog').showModal(); setTimeout(()=>$('eventDialog').focus({preventScroll:true}), 0);
 }
 async function submitForm(){
+  if(!$('eventForm').reportValidity()||!$('eventTitle').value.trim())return;
+  if(state.saving)return;
   const repeatUnit=normalizeRepeatUnit($('repeatUnit').value);
   const rec=$('repeatToggle').checked ? { enabled:true, unit:repeatUnit, interval:normalizeRepeatInterval($('repeatInterval').value), frequency:repeatUnit==='day'?'daily':repeatUnit==='week'?'weekly':repeatUnit==='month'?'monthly':'yearly', until:$('repeatUntil').value||null, days:[...document.querySelectorAll('.weekday-picker input:checked')].map(x=>Number(x.value)) } : null;
   const isAllDay=!!$('allDayCheck')?.checked;
   const e={ id:$('eventId').value||uuid(), title:$('eventTitle').value.trim(), person_key:$('personSelect').value, preset_name:$('presetSelect').value, date:$('eventDate').value, start_time:isAllDay?'00:00':$('startTime').value, end_time:isAllDay?'23:59':$('endTime').value, is_all_day:isAllDay, status:$('statusSelect').value, color:state.selectedColor, notes:$('eventNotes').value.trim(), recurrence_rule:rec };
   if(!e.is_all_day && hmToMin(e.end_time)<=hmToMin(e.start_time)){ alert('End time has to be after start time. Time goblin denied.'); return; }
   const scope=state.editScope;
+  state.saving=true;$('saveEventBtn').disabled=true;
   try{
     if(scope?.type==='occurrence'){
       const moved=e.date!==scope.originalDate;
       await saveException({
         parent_event_id:scope.parentId,
         original_event_date:scope.originalDate,
-        exception_status:moved?'moved':'modified',
+        exception_status:exceptionFor(scope.parentId,scope.originalDate)?.exception_status || (moved?'moved':'modified'),
+        occurrence_status:e.status,
         new_event_date:moved?e.date:null,
         new_start_time:e.start_time,
         new_end_time:e.end_time,
@@ -1113,24 +958,9 @@ async function submitForm(){
       state.editScope=null;
       $('eventDialog').close(); render(); return;
     }
-    if(scope?.type==='future'){
-      const parent=state.events.find(x=>x.id===scope.parentId);
-      if(!parent) throw new Error('Recurring parent series was not found.');
-      if(scope.originalDate<=parent.date){
-        await saveEvent({...e,id:parent.id});
-      }else{
-        await saveEvent({...parent,recurrence_rule:{...parent.recurrence_rule,until:previousDate(scope.originalDate)}});
-        await deleteExceptionsFrom(parent.id,scope.originalDate);
-        await saveEvent({...e,id:uuid(),recurrence_rule:e.recurrence_rule?.enabled?e.recurrence_rule:parent.recurrence_rule});
-      }
-      state.editScope=null;
-      $('eventDialog').close(); render(); return;
-    }
-    await saveEvent(e);
-  }catch(err){
-    return;
-  }
-  $('eventDialog').close(); render();
+    await saveEvent({...state.editOriginal,...e});
+  }catch(err){alert(err.message);return;}finally{state.saving=false;$('saveEventBtn').disabled=false;}
+  $('eventDialog').close();render();
 }
 function escapeHtml(s){ return String(s||'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
 init();
