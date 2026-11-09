@@ -53,4 +53,22 @@ assert.deepEqual(dates,[['2026-01-31','2026-02-28','2026-03-31'],['2024-02-29','
 await page.setViewportSize({width:390,height:844});await page.click('#addEventBtn');fs.mkdirSync('test-results',{recursive:true});await page.screenshot({path:'test-results/person-first-mobile.png',fullPage:true});await page.click('#cancelEventBtn');
 assert.deepEqual(errors,[]);
 console.log('PASS: person first/defaults; dropdown; occurrence no-show; next N cancellation; edited cancellation/empty notes; student identity and undo; archive/undo; task completion/history; recurrence/DST; mobile layout.');
+
+const pc=await browser.newContext({timezoneId:'America/New_York'});
+const pp=await pc.newPage();
+const remoteRequests=[];
+pp.on('request',r=>{if(r.url().includes('supabase.co'))remoteRequests.push(r.url());});
+await pp.goto(url.replace('index.html','preview.html'));
+await pp.waitForFunction(()=>appReady);
+assert.equal(await pp.evaluate(()=>state.storageMode),'local');
+assert.equal(await pp.evaluate(()=>state.events.length),2);
+assert(await pp.getByText('ISOLATED PREVIEW',{exact:false}).isVisible());
+await pp.click('#addEventBtn');
+assert.equal(await pp.inputValue('#personSelect'),'tod');
+assert.equal(await pp.inputValue('#presetSelect'),'Meeting');
+assert.equal(await pp.locator('#studentQuickAddRow').isVisible(),false);
+await pp.click('#cancelEventBtn');
+assert.deepEqual(remoteRequests,[],'Preview must never request the live Supabase project');
+await pc.close();
+console.log('PASS isolated browser preview: synthetic-only data, no hosted API access, expected Person defaults.');
 await browser.close();server.close();
