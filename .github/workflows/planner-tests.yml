@@ -24,3 +24,35 @@ jobs:
         with:
           name: planner-ui-preview
           path: test-results/
+  supabase-http:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: supabase/setup-cli@v3
+        with:
+          version: latest
+      - name: Prepare disposable local database migrations
+        run: |
+          supabase init
+          supabase migration new calendar_base
+          cp supabase-schema.sql "$(find supabase/migrations -name '*_calendar_base.sql' | head -1)"
+          supabase migration new calendar_tasks
+          cp poiriers-planner-tasks.sql "$(find supabase/migrations -name '*_calendar_tasks.sql' | head -1)"
+          supabase migration new safe_writes
+          cp db/planner-safe-writes.sql "$(find supabase/migrations -name '*_safe_writes.sql' | head -1)"
+      - name: Start isolated Supabase API, database and auth
+        run: supabase start
+      - name: Exercise HTTP API with anonymous client
+        run: |
+          supabase status -o env > /tmp/planner-supabase.env
+          set -a
+          . /tmp/planner-supabase.env
+          set +a
+          node tests/supabase-http.mjs
+      - name: Remove ephemeral local database
+        if: always()
+        run: supabase stop --no-backup || true
