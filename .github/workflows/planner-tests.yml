@@ -1,0 +1,56 @@
+name: Planner isolated tests
+on:
+  pull_request:
+  push:
+    branches: ['work/**']
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:browser
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: planner-ui-preview
+          path: test-results/
+  supabase-http:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: supabase/setup-cli@v3
+        with:
+          version: latest
+      - name: Prepare disposable local database migrations
+        run: |
+          supabase init
+          supabase migration new planner_schema
+          # One timestamped migration avoids collisions when CLI creates files in the same second.
+          cat supabase-schema.sql poiriers-planner-tasks.sql db/planner-safe-writes.sql > "$(find supabase/migrations -name '*_planner_schema.sql' | head -1)"
+      - name: Start isolated Supabase API, database and auth
+        run: supabase start
+      - name: Exercise HTTP API with anonymous client
+        run: |
+          supabase status -o env > /tmp/planner-supabase.env
+          set -a
+          . /tmp/planner-supabase.env
+          set +a
+          node tests/supabase-http.mjs
+      - name: Remove ephemeral local database
+        if: always()
+        run: supabase stop --no-backup || true

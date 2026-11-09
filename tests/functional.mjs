@@ -1,0 +1,47 @@
+import vm from 'node:vm';
+import {JSDOM} from 'jsdom';import fs from 'node:fs';import assert from 'node:assert/strict';
+const dom=new JSDOM(fs.readFileSync('index.html','utf8'),{url:'http://isolated.test/index.html',runScripts:'outside-only',pretendToBeVisual:true});
+const w=dom.window;const alerts=[];
+w.matchMedia=()=>({matches:false,addEventListener(){}});w.alert=x=>alerts.push(String(x));w.confirm=()=>true;w.prompt=()=> '1';w.fetch=async()=>({ok:false});
+w.HTMLElement.prototype.scrollTo=function(){};w.HTMLElement.prototype.scrollIntoView=function(){};
+w.HTMLDialogElement.prototype.showModal=function(){this.open=true;};w.HTMLDialogElement.prototype.close=function(value){this.returnValue=value||'';this.open=false;this.dispatchEvent(new w.Event('close'));};
+for(const f of ['planner-store.js','planner-actions.js','app.js','tasks.js'])vm.runInContext(fs.readFileSync(f,'utf8'),dom.getInternalVMContext());
+await new Promise(r=>setTimeout(r,100));
+const run=code=>vm.runInContext(code,dom.getInternalVMContext());const $=id=>w.document.getElementById(id);
+const table='tod_donna_calendar_events';
+await run(`(async()=>{const e={id:'event',title:'Lesson',person_key:'donna',preset_name:'Lesson',date:'2026-11-09',start_time:'09:00',end_time:'09:30',is_all_day:false,status:'scheduled',color:'#c8dff0',notes:'Original notes',source:'import-test',recurrence_rule:{enabled:true,unit:'week',interval:1,days:[1]}};await saveEvent(e);state.weekStart=new Date('2026-11-09T00:00');render();})()`);
+run("openDialog({date:'2026-11-09'})");assert.equal($('personSelect').value,'tod');assert.equal($('presetSelect').value,'Meeting');assert($('studentQuickAddRow').classList.contains('hidden'));assert($('personSelect').compareDocumentPosition($('eventTitle'))&w.Node.DOCUMENT_POSITION_FOLLOWING);
+$('personSelect').value='donna';$('personSelect').dispatchEvent(new w.Event('change'));assert.equal($('presetSelect').value,'Lesson');assert(!$('studentQuickAddRow').classList.contains('hidden'));$('eventDialog').close();
+run("openDialog({date:'2026-11-09'})");assert.equal($('personSelect').value,'tod');$('eventDialog').close();
+assert.equal($('defaultPersonSetting').value,'tod');
+$('defaultPersonSetting').value='donna';$('defaultPersonSetting').dispatchEvent(new w.Event('change'));
+assert.equal(w.localStorage.getItem('planner_default_person'),'donna');
+w.localStorage.setItem('planner_default_person','tod');
+run("openDialog({date:'2026-11-09'})");assert.equal($('personSelect').value,'donna');assert.equal($('presetSelect').value,'Lesson');assert.equal($('defaultPersonSetting').value,'donna');
+w.localStorage.setItem('planner_default_person','donna');
+$('personSelect').value='tod';$('personSelect').dispatchEvent(new w.Event('change'));$('eventDialog').close();
+assert.equal(w.localStorage.getItem('planner_default_person'),'donna');
+run("openDialog({date:'2026-11-09'})");assert.equal($('personSelect').value,'donna');$('eventDialog').close();
+$('defaultPersonSetting').value='tod';$('defaultPersonSetting').dispatchEvent(new w.Event('change'));
+await run("saveException({parent_event_id:'event',original_event_date:'2026-11-09',exception_status:'modified',new_title:'Edited',new_notes:'Edited notes',new_event_date:'2026-11-10'})");
+await run("changeOccurrenceStatus(materializeSeriesOccurrence(state.events[0],'2026-11-09'),'no_show')");
+assert.equal(run("materializeSeriesOccurrence(state.events[0],'2026-11-09').status"),'no_show');assert.equal(run("materializeSeriesOccurrence(state.events[0],'2026-11-09').notes"),'Edited notes');assert.equal(run("materializeSeriesOccurrence(state.events[0],'2026-11-09').date"),'2026-11-10');assert.equal(run("materializeSeriesOccurrence(state.events[0],'2026-11-16').status"),'scheduled');
+run('render()');assert(w.document.querySelector('.status-badge').textContent==='NO-SHOW');
+const cancelling=run("cancelRecurring(materializeSeriesOccurrence(state.events[0],'2026-11-16'))");
+let dialog=w.document.querySelector('.scope-dialog');dialog.querySelector('[value="number"]').checked=true;dialog.querySelector('[name="count"]').value='2';dialog.close('continue');await cancelling;
+assert.equal(run("materializeSeriesOccurrence(state.events[0],'2026-11-16').status"),'cancelled');assert.equal(run("materializeSeriesOccurrence(state.events[0],'2026-11-23').status"),'cancelled');assert.equal(run("materializeSeriesOccurrence(state.events[0],'2026-11-30').status"),'scheduled');
+run("openDetails(materializeSeriesOccurrence(state.events[0],'2026-11-16'));handleEditDetails()");$('eventNotes').value='';$('eventTitle').value='Edited cancellation';await run('submitForm()');assert.equal(run("materializeSeriesOccurrence(state.events[0],'2026-11-16').status"),'cancelled');assert.equal(run("materializeSeriesOccurrence(state.events[0],'2026-11-16').notes"),'');
+await run("archiveEvent(materializeSeriesOccurrence(state.events[0],'2026-11-16'))");assert.equal(run("materializeSeriesOccurrence(state.events[0],'2026-11-16')"),null);$('undoPlannerBtn').click();await new Promise(r=>setTimeout(r,50));assert.equal(run("materializeSeriesOccurrence(state.events[0],'2026-11-16').title"),'Edited cancellation');
+const all=run("cancelRecurring(materializeSeriesOccurrence(state.events[0],'2026-11-30'))");dialog=w.document.querySelector('.scope-dialog');dialog.querySelector('[value="all"]').checked=true;dialog.close('continue');await all;assert.equal(run("materializeSeriesOccurrence(state.events[0],'2030-11-11').status"),'cancelled');assert.equal(run("materializeSeriesOccurrence(state.events[0],'2026-11-09').status"),'no_show');
+// Monthly/yearly/weekly and DST enumeration.
+assert.deepEqual(JSON.parse(run(`JSON.stringify((()=>{const mk=(date,unit,interval=1,days=[])=>({id:'rec',date,start_time:'09:00',end_time:'09:30',status:'scheduled',recurrence_rule:{enabled:true,unit,interval,days}});return [nextOccurrences(mk('2026-01-31','month'),'2026-01-31',3),nextOccurrences(mk('2024-02-29','year'),'2024-02-29',3),nextOccurrences(mk('2026-10-26','week',2,[1,3]),'2026-10-26',4)]})())`)),[['2026-01-31','2026-02-28','2026-03-31'],['2024-02-29','2025-02-28','2026-02-28'],['2026-10-26','2026-10-28','2026-11-09','2026-11-11']]);
+// Stable student IDs and reversible removal.
+await run("PlannerStore.commit([PlannerStore.change('tod_donna_calendar_active_students','student',{id:'student',student_group:'Active Students',student_name:'Student',standard_lesson_minutes:30,is_active:true,sort_order:0})]);");await run('loadStudentList()');run('openStudentListDialog()');w.document.querySelector('.student-name-input').value='Renamed';await run('saveStudentList()');assert.equal(run("state.studentList.students[0].id"),'student');$('studentListDialog').close();run('openStudentListDialog()');w.document.querySelector('.remove-student-row').click();await run('saveStudentList()');assert.equal(run("PlannerStore.rows('tod_donna_calendar_active_students')[0].is_active"),false);$('studentListDialog').close();$('undoPlannerBtn').click();await new Promise(r=>setTimeout(r,50));assert.equal(run('state.studentList.students.length'),1);
+// Re-adding an inactive student reuses the original database identity.
+run('openStudentListDialog()');w.document.querySelector('.remove-student-row').click();await run('saveStudentList()');$('studentListDialog').close();run('openStudentListDialog()');w.document.querySelector('.student-name-input').value='Renamed';await run('saveStudentList()');$('studentListDialog').close();assert.equal(run("state.studentList.students[0].id"),'student');
+// Tasks persist, complete and reopen through history.
+w.PoirierPlannerTasks.open();$('taskTitle').value='Task';$('taskForm').dispatchEvent(new w.Event('submit',{cancelable:true}));await new Promise(r=>setTimeout(r,50));assert.equal(run("PlannerStore.rows('tod_donna_calendar_tasks').length"),1);w.document.querySelector('.planner-task-check input').checked=true;w.document.querySelector('.planner-task-check input').dispatchEvent(new w.Event('change'));await new Promise(r=>setTimeout(r,50));assert.equal(run("PlannerStore.rows('tod_donna_calendar_tasks')[0].completed"),true);
+run('showPlannerHistory()');const taskRow=[...w.document.querySelectorAll('.history-item')].find(r=>r.textContent.includes('Task'));taskRow.querySelector('button').click();await new Promise(r=>setTimeout(r,50));assert.equal(run("PlannerStore.rows('tod_donna_calendar_tasks')[0].completed"),false);
+assert.deepEqual(alerts,[]);
+console.log('PASS: person order/defaults; student visibility; moved occurrence no-show preservation; next N and all cancellation; retained no-show history; cancelled editing; empty notes; archive/undo; stable students; task completion/reopen; month-end/leap/DST recurrence.');
+dom.window.close();

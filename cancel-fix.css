@@ -1,2 +1,13 @@
 .cancelled { opacity:.58; }
 .cancelled .event-title { text-decoration:line-through; text-decoration-thickness:1.5px; }
+.status-badge { display:inline-block; font-size:.64rem; font-weight:800; letter-spacing:.04em; line-height:1.2; padding:1px 4px; border-radius:3px; background:#fff9; color:#72231c; }
+.event-block.no-show, .all-day-event.no-show { outline:2px solid #ac392c; outline-offset:-2px; }
+.scope-dialog { max-width:min(92vw,450px); border:0; border-radius:12px; padding:1.2rem; }
+.scope-dialog label { display:block; margin:.8rem 0; }
+.scope-dialog menu { display:flex; justify-content:flex-end; gap:.5rem; padding:0; }
+.history-list { max-height:60vh; overflow:auto; }
+.history-item { display:flex; align-items:center; gap:.5rem; justify-content:space-between; margin:.6rem 0; }
+.header-actions { flex-wrap:wrap; }
+/* Keep attendance labels visible inside compact 30-minute blocks. */
+.event-block .status-badge { position:absolute; right:2px; top:50%; transform:translateY(-50%); z-index:6; font-size:8px; padding:1px 2px; background:#fff; }
+.event-block.no-show .event-title, .event-block.cancelled .event-title { margin-right:54px; }

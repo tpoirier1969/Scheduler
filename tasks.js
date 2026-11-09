@@ -27,12 +27,13 @@
       completed_at:row.completed_at||null,
       sort_order:Number(row.sort_order||0),
       created_at:row.created_at||null,
+      archived:!!row.archived,
       updated_at:row.updated_at||null
     };
   }
 
   function visibleOnDate(task,dateStr){
-    if(!task || task.completed) return false;
+    if(!task || task.completed || task.archived) return false;
     if(task.task_mode===MODES.TIMELESS) return true;
     if(task.task_mode===MODES.FROM_DATE) return !!task.assigned_date && dateStr>=task.assigned_date;
     if(task.task_mode===MODES.SPECIFIC_DATE) return task.assigned_date===dateStr;
@@ -66,13 +67,14 @@
         renderTaskSetupNeeded();
         return false;
       }
+      PlannerStore.capture(TASK_TABLE,data||[]);
       tasks=(data||[]).map(normalizeTask);
-      localStorage.removeItem(TASK_STORAGE);
       taskFeatureReady=true;
       refreshTaskPanels();
       return true;
     }
-    try{ tasks=JSON.parse(localStorage.getItem(TASK_STORAGE)||'[]').map(normalizeTask); }
+    if(PlannerStore.restoreLocal()){tasks=PlannerStore.rows(TASK_TABLE).map(normalizeTask);taskFeatureReady=true;refreshTaskPanels();return true;}
+    try{tasks=JSON.parse(localStorage.getItem(TASK_STORAGE)||'[]').map(normalizeTask);PlannerStore.capture(TASK_TABLE,tasks);}
     catch{ tasks=[]; }
     taskFeatureReady=true;
     refreshTaskPanels();
@@ -92,24 +94,13 @@
       completed_at:task.completed_at||null,
       sort_order:Number(task.sort_order||0)
     };
-    if(typeof state!=='undefined' && state.storageMode==='supabase' && state.supabase){
-      const {data,error}=await state.supabase.from(TASK_TABLE).upsert(row).select().single();
-      if(error) throw error;
-      return normalizeTask(data);
-    }
-    const idx=tasks.findIndex(t=>t.id===task.id);
-    if(idx>=0) tasks[idx]=normalizeTask(task); else tasks.push(normalizeTask(task));
-    localStorage.setItem(TASK_STORAGE,JSON.stringify(tasks));
-    return normalizeTask(task);
+    const changes=await PlannerStore.commit([PlannerStore.change(TASK_TABLE,task.id,row)]);
+    return normalizeTask(changes[0].after);
   }
 
   async function removeTask(id){
-    if(typeof state!=='undefined' && state.storageMode==='supabase' && state.supabase){
-      const {error}=await state.supabase.from(TASK_TABLE).delete().eq('id',id);
-      if(error) throw error;
-    }
-    tasks=tasks.filter(t=>t.id!==id);
-    if(typeof state==='undefined' || state.storageMode!=='supabase') localStorage.setItem(TASK_STORAGE,JSON.stringify(tasks));
+    await PlannerStore.commit([PlannerStore.change(TASK_TABLE,id,{archived:true})]);
+    tasks=tasks.map(t=>t.id===id?{...t,archived:true}:t);
   }
 
   function installDialog(){
@@ -192,6 +183,7 @@
       completed_at:existing?.completed_at||null,
       sort_order:existing?.sort_order||0
     });
+    byId('saveTaskBtn').disabled=true;
     try{
       const saved=await persistTask(task);
       const idx=tasks.findIndex(t=>t.id===saved.id);
@@ -202,13 +194,13 @@
     }catch(error){
       console.error(error);
       alert(`Task was not saved.\n\n${error?.message||error}`);
-    }
+    }finally{byId('saveTaskBtn').disabled=false;}
   }
 
   async function deleteCurrentTask(){
     const id=byId('taskId').value;
     const task=tasks.find(t=>t.id===id);
-    if(!task || !confirm(`Delete “${task.title}”?`)) return;
+    if(!task || !confirm(`Remove “${task.title}”? It can be restored from History.`)) return;
     try{ await removeTask(id); byId('taskDialog').close(); refreshTaskPanels(); }
     catch(error){ alert(`Task was not deleted.\n\n${error?.message||error}`); }
   }
@@ -218,7 +210,8 @@
     if(!current) return;
     const changed={...current,completed,completed_at:completed?new Date().toISOString():null};
     try{
-      const saved=await persistTask(changed);
+      const result=await PlannerStore.commit([PlannerStore.change(TASK_TABLE,id,{completed,completed_at:changed.completed_at})]);
+      const saved=normalizeTask(result[0].after);
       const idx=tasks.findIndex(t=>t.id===id);
       if(idx>=0) tasks[idx]=saved;
       refreshTaskPanels();
@@ -269,7 +262,7 @@
   function updateHeaderTaskCount(){
     const btn=byId('addTaskBtn');
     if(!btn) return;
-    const count=tasks.filter(t=>!t.completed && matchesCalendarFilter(t)).length;
+    const count=tasks.filter(t=>!t.completed && !t.archived && matchesCalendarFilter(t)).length;
     btn.textContent=count?`Tasks (${count})`:'Tasks';
   }
 
